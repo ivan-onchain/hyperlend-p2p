@@ -1,13 +1,12 @@
-# Sample Hardhat Project
+# HyperLend P2P lending
 
-This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, and a script that deploys that contract.
-
-Try running some of the following tasks:
-
-```shell
-npx hardhat help
-npx hardhat test
-REPORT_GAS=true npx hardhat test
-npx hardhat node
-npx hardhat run scripts/deploy.js
-```
+Features:
+    - users can request a loan  
+        - select asset, collateral, asset amount, repayment amount, collateral amount, loan duration, can the loan be liquidated when it becomes insolvent
+        - if loan is liquidatable (before expiration), user also choses chainlink price oracles and liquidation threshold
+    - users can fill loan requests
+    - users can cancel unfilled requests
+    - users can repay loans
+    - unfilled requests expire after X time
+    - unpaid loans can be liqudated
+    - protocol fee is charged on interest (replayment amount - amount)
