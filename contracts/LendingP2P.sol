@@ -21,10 +21,16 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         Liquidated
     }
 
+    constructor() Ownable(msg.sender) {}
+
+    /* ●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・ */
+    /*                          Structs                         */
+    /* ●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・ */
+
     /// @notice details about loan liquidation
     struct Liquidation {
         bool isLiquidatable;          // can the loan be liquidated before it's defaulted
-        uint256 liquidationThreshold; // threshold where loan can be liquidated in bps, e.g. 8000 = liquidated when loan value > 80% of the collateral value
+        uint16 liquidationThreshold;  // threshold where loan can be liquidated in bps, e.g. 8000 = liquidated when loan value > 80% of the collateral value
         address assetOracle;          // chainlink oracle for the borrowed asset
         address collateralOracle;     // chainlink oracle for the collateral asset, must be in same currency as assetOracle
     }
@@ -40,13 +46,17 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         uint256 repaymentAmount;  // amount of the asset being repaid by the lender
         uint256 collateralAmount; // amount of the collateral being pledged by the borrower
 
-        uint256 createdTimestamp; // timestamp when loan request was created
-        uint256 startTimestamp;   // timestamp when loan was accepted
-        uint256 duration;         // duration of the loan in seconds
+        uint64 createdTimestamp;  // timestamp when loan request was created
+        uint64 startTimestamp;    // timestamp when loan was accepted
+        uint64 duration;          // duration of the loan in seconds
 
         Liquidation liquidation; // details about the loan liquidation
         Status status;           // current status of the loan
     }
+
+    /* ●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・ */
+    /*                         Events                           */
+    /* ●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・ */
 
     /// @notice emitted when a new loan is requested
     event LoanRequested(uint256 indexed loanId);
@@ -61,26 +71,42 @@ contract LendingP2P is ReentrancyGuard, Ownable {
     /// @notice emitted when protocol earns some revenue
     event ProtocolRevenue(uint256 indexed loanId, address indexed asset, uint256 amount);
 
+    /* ●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・ */
+    /*                        Constants                         */
+    /* ●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・ */
+
     /// @notice maximum duration that the loan request can be active
     uint256 public constant REQUEST_EXPIRATION_DURATION = 7 days;
     /// @notice protocol fee, charged on interest, in bps
     uint256 public constant PROTOCOL_FEE = 2000;
+    /// @notice fee paid to the liquidator, in bps
+    uint256 public constant LIQUIDATOR_BONUS_BPS = 100;
+    /// @notice fee paid to the protocol, in bps
+    uint256 public constant PROTOCOL_LIQUIDATION_FEE = 20;
+
+    /* ●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・ */
+    /*                        Variables                         */
+    /* ●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・ */
 
     /// @notice length of all loans
     uint256 public loanLength = 0;
     /// @notice mapping of all loans
     mapping(uint256 => Loan) public loans;
 
-    constructor() Ownable(msg.sender) {}
+    /* ●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・ */
+    /*                    Public Functions                      */
+    /* ●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・ */
 
     /// @notice function used to request a new loan
     function requestLoan(bytes memory _encodedLoan) external nonReentrant {
         Loan memory loan = abi.decode(_encodedLoan, (Loan));
 
-        require(loan.repaymentAmount > loan.assetAmount, "amount > repayment");
-        require(loan.asset != loan.collateral, "asset == collateral");
+        require(loan.borrower == msg.sender, "borrower != msg.sender");
+        require(loan.repaymentAmount > loan.assetAmount, "amount <= repayment");
+        require(loan.asset != loan.collateral, "asset != collateral");
+        require(loan.liquidation.liquidationThreshold <= 10000, "liq threshold > max bps");
 
-        loan.createdTimestamp = block.timestamp;
+        loan.createdTimestamp = uint64(block.timestamp);
         loan.startTimestamp = 0;
         loan.status = Status.Pending;
 
@@ -93,8 +119,8 @@ contract LendingP2P is ReentrancyGuard, Ownable {
     /// @notice function used to cancel a unfilled loan
     function cancelLoan(uint256 loanId) external nonReentrant {
         require(loans[loanId].status == Status.Pending, "invalid status");
-        require(loans[loanId].createdTimestamp + REQUEST_EXPIRATION_DURATION > block.timestamp, "request already expired");
-        require(loans[loanId].borrower == msg.sender, "sender is not borrower");
+        require(loans[loanId].createdTimestamp + REQUEST_EXPIRATION_DURATION > block.timestamp, "already expired");
+        require(loans[loanId].borrower == msg.sender, "sender != borrower");
 
         loans[loanId].status = Status.Canceled;
 
@@ -103,64 +129,91 @@ contract LendingP2P is ReentrancyGuard, Ownable {
 
     /// @notice function used to fill a loan request
     function fillRequest(uint256 loanId) external nonReentrant {
-        require(loans[loanId].status == Status.Pending, "invalid status");
-        require(loans[loanId].createdTimestamp + REQUEST_EXPIRATION_DURATION > block.timestamp, "request already expired");
+        Loan memory _loan = loans[loanId];
+
+        require(_loan.status == Status.Pending, "invalid status");
+        require(_loan.createdTimestamp + REQUEST_EXPIRATION_DURATION > block.timestamp, "already expired");
+        if (_loan.liquidation.isLiquidatable){
+            require(!_isLoanLiquidatable(loanId), "instantly liqudatable"); //make sure it can't be instantly liquidated
+        }
 
         loans[loanId].lender = msg.sender;
-        loans[loanId].startTimestamp = block.timestamp;
+        loans[loanId].startTimestamp = uint64(block.timestamp);
 
-        IERC20(loans[loanId].collateral).transferFrom(loans[loanId].borrower, address(this), loans[loanId].collateralAmount);
-        IERC20(loans[loanId].asset).transferFrom(loans[loanId].lender, loans[loanId].borrower, loans[loanId].assetAmount);
+        IERC20(_loan.collateral).transferFrom(_loan.borrower, address(this), _loan.collateralAmount);
+        IERC20(_loan.asset).transferFrom(_loan.lender, _loan.borrower, _loan.assetAmount);
 
         emit LoanFilled(loanId);
     }
 
     /// @notice function used to repay a loan
+    /// @dev loan can be repaid after expiration, as long it's not liquidated
+    /// @dev fee is charged on interest only
     function repayLoan(uint256 loanId) external nonReentrant {
-        require(loans[loanId].status == Status.Active, "invalid status");
-        require(loans[loanId].startTimestamp + loans[loanId].duration > block.timestamp, "loan already expired");
+        Loan memory _loan = loans[loanId];
 
-        // fee is charged on interest only
-        uint256 protocolFee = (loans[loanId].repaymentAmount - loans[loanId].assetAmount) * PROTOCOL_FEE / 10000;
-        uint256 amountToLender = loans[loanId].repaymentAmount - protocolFee;
+        require(_loan.status == Status.Active, "invalid status");
 
-        IERC20(loans[loanId].asset).transferFrom(address(this), owner(), protocolFee);
-        IERC20(loans[loanId].asset).transferFrom(loans[loanId].borrower, loans[loanId].lender, amountToLender);
-        IERC20(loans[loanId].collateral).transferFrom(address(this), loans[loanId].borrower, loans[loanId].collateralAmount);
+        uint256 protocolFee = (_loan.repaymentAmount - _loan.assetAmount) * PROTOCOL_FEE / 10000;
+        uint256 amountToLender = _loan.repaymentAmount - protocolFee;
 
         loans[loanId].status = Status.Repaid;
 
+        IERC20(_loan.asset).transferFrom(address(this), owner(), protocolFee);
+        IERC20(_loan.asset).transferFrom(_loan.borrower, _loan.lender, amountToLender);
+        IERC20(_loan.collateral).transferFrom(address(this), _loan.borrower, _loan.collateralAmount);
+
         emit LoanRepaid(loanId);
-        emit ProtocolRevenue(loanId, loans[loanId].asset, protocolFee);
+        emit ProtocolRevenue(loanId, _loan.asset, protocolFee);
     }   
 
     /// @notice function used to liquidate a loan
     /// @dev loan can be liquiated either if it's overdue, or if it's insolvent (only for liquidatable loans)
     function liquidateLoan(uint256 loanId) external nonReentrant {
-        require(loans[loanId].status == Status.Active, "invalid status");
+        Loan memory _loan = loans[loanId];
 
-        if (isLoanLiquidatable(loanId)){
-            //liquidate by price
-            IERC20(loans[loanId].collateral).transferFrom(address(this), loans[loanId].lender, loans[loanId].collateralAmount);
-            loans[loanId].status = Status.Liquidated;
-            emit LoanLiquidated(loanId);
-        } else if (loans[loanId].status == Status.Active && block.timestamp > loans[loanId].startTimestamp + loans[loanId].duration) {
-            //liquidate by time
-            IERC20(loans[loanId].collateral).transferFrom(address(this), loans[loanId].lender, loans[loanId].collateralAmount);
-            loans[loanId].status = Status.Liquidated;
-            emit LoanLiquidated(loanId);
+        require(_loan.status == Status.Active, "invalid status");
+
+        if (_isLoanLiquidatable(loanId)){
+            _liquidate(loanId); //liquidate by price
+        } else if (block.timestamp > _loan.startTimestamp + _loan.duration) {
+            _liquidate(loanId); //liquidate by time
         }
     }
 
-    function isLoanLiquidatable(uint256 loanId) public view returns (bool) {
-        if (loans[loanId].liquidation.isLiquidatable){
-            uint256 assetPrice = uint256(AggregatorInterface(loans[loanId].liquidation.assetOracle).latestAnswer());
-            uint256 collateralPrice = uint256(AggregatorInterface(loans[loanId].liquidation.collateralOracle).latestAnswer());
+    /* ●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・ */
+    /*                    Helper Functions                      */
+    /* ●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・ */
 
-            uint256 loanValue = assetPrice * loans[loanId].assetAmount;
-            uint256 collateralValue = collateralPrice * loans[loanId].collateralAmount;
+    /// @notice internal helper function used to liquidate a loan
+    function _liquidate(uint256 loanId) internal {
+        Loan memory _loan = loans[loanId];
 
-            return (loanValue > (collateralValue * loans[loanId].liquidation.liquidationThreshold / 10000));
+        uint256 liquidatorBonus = _loan.collateralAmount * LIQUIDATOR_BONUS_BPS / 10000;
+        uint256 protocolFee = _loan.collateralAmount * PROTOCOL_LIQUIDATION_FEE / 10000;
+        uint256 lenderAmount = _loan.collateralAmount - liquidatorBonus - protocolFee;
+
+        loans[loanId].status = Status.Liquidated;
+        
+        IERC20(_loan.collateral).transferFrom(address(this), _loan.lender, lenderAmount);
+        IERC20(_loan.collateral).transferFrom(address(this), msg.sender, liquidatorBonus);
+        IERC20(_loan.collateral).transferFrom(address(this), owner(), protocolFee);
+
+        emit LoanLiquidated(loanId);
+        emit ProtocolRevenue(loanId, _loan.collateral, protocolFee);
+    }
+
+    function _isLoanLiquidatable(uint256 loanId) public view returns (bool) {
+        Loan memory _loan = loans[loanId];
+
+        if (_loan.liquidation.isLiquidatable){
+            uint256 assetPrice = uint256(AggregatorInterface(_loan.liquidation.assetOracle).latestAnswer());
+            uint256 collateralPrice = uint256(AggregatorInterface(_loan.liquidation.collateralOracle).latestAnswer());
+
+            uint256 loanValue = assetPrice * _loan.assetAmount;
+            uint256 collateralValue = collateralPrice * _loan.collateralAmount;
+
+            return (loanValue > (collateralValue * _loan.liquidation.liquidationThreshold / 10000));
         } 
 
         return false;
