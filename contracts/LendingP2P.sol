@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
 import { AggregatorInterface } from './dependencies/AggregatorInterface.sol';
 
 /**
@@ -48,7 +49,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
     }
 
     /// @notice emitted when a new loan is requested
-    event LoanRequested(Loan loan);
+    event LoanRequested(uint256 indexed loanId);
     /// @notice emitted when a loan is canceled
     event LoanCanceled(uint256 indexed loanId);
     /// @notice emitted when a loan request is filled
@@ -61,7 +62,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
     event ProtocolRevenue(uint256 indexed loanId, address indexed asset, uint256 amount);
 
     /// @notice maximum duration that the loan request can be active
-    uint256 public constant REQUEST_PENDING_DURATION = 7 days;
+    uint256 public constant REQUEST_EXPIRATION_DURATION = 7 days;
     /// @notice protocol fee, charged on interest, in bps
     uint256 public constant PROTOCOL_FEE = 2000;
 
@@ -70,11 +71,12 @@ contract LendingP2P is ReentrancyGuard, Ownable {
     /// @notice mapping of all loans
     mapping(uint256 => Loan) public loans;
 
-    constructor() Ownable(msg.sender)  {}
+    constructor() Ownable(msg.sender) {}
 
     /// @notice function used to request a new loan
     function requestLoan(bytes memory _encodedLoan) external nonReentrant {
         Loan memory loan = abi.decode(_encodedLoan, (Loan));
+
         require(loan.repaymentAmount > loan.assetAmount, "amount > repayment");
         require(loan.asset != loan.collateral, "asset == collateral");
 
@@ -85,13 +87,13 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         loans[loanLength] = loan;
         loanLength += 1;
 
-        emit LoanRequested(loans[loanLength - 1]);
+        emit LoanRequested(loanLength - 1);
     }
 
     /// @notice function used to cancel a unfilled loan
     function cancelLoan(uint256 loanId) external nonReentrant {
         require(loans[loanId].status == Status.Pending, "invalid status");
-        require(loans[loanId].createdTimestamp + REQUEST_PENDING_DURATION > block.timestamp, "request already expired");
+        require(loans[loanId].createdTimestamp + REQUEST_EXPIRATION_DURATION > block.timestamp, "request already expired");
         require(loans[loanId].borrower == msg.sender, "sender is not borrower");
 
         loans[loanId].status = Status.Canceled;
@@ -102,7 +104,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
     /// @notice function used to fill a loan request
     function fillRequest(uint256 loanId) external nonReentrant {
         require(loans[loanId].status == Status.Pending, "invalid status");
-        require(loans[loanId].createdTimestamp + REQUEST_PENDING_DURATION > block.timestamp, "request already expired");
+        require(loans[loanId].createdTimestamp + REQUEST_EXPIRATION_DURATION > block.timestamp, "request already expired");
 
         loans[loanId].lender = msg.sender;
         loans[loanId].startTimestamp = block.timestamp;
@@ -137,7 +139,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
     function liquidateLoan(uint256 loanId) external nonReentrant {
         require(loans[loanId].status == Status.Active, "invalid status");
 
-        if (loans[loanId].liquidation.isLiquidatable && isLoanLiquidatable(loanId)){
+        if (isLoanLiquidatable(loanId)){
             //liquidate by price
             IERC20(loans[loanId].collateral).transferFrom(address(this), loans[loanId].lender, loans[loanId].collateralAmount);
             loans[loanId].status = Status.Liquidated;
@@ -158,7 +160,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
             uint256 loanValue = assetPrice * loans[loanId].assetAmount;
             uint256 collateralValue = collateralPrice * loans[loanId].collateralAmount;
 
-            if (loanValue > (collateralValue * loans[loanId].liquidation.liquidationThreshold / 10000)) return true;
+            return (loanValue > (collateralValue * loans[loanId].liquidation.liquidationThreshold / 10000));
         } 
 
         return false;
