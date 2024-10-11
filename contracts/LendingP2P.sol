@@ -103,7 +103,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
 
         require(loan.borrower == msg.sender, "borrower != msg.sender");
         require(loan.repaymentAmount > loan.assetAmount, "amount <= repayment");
-        require(loan.asset != loan.collateral, "asset != collateral");
+        require(loan.asset != loan.collateral, "asset == collateral");
         require(loan.liquidation.liquidationThreshold <= 10000, "liq threshold > max bps");
 
         loan.createdTimestamp = uint64(block.timestamp);
@@ -139,9 +139,10 @@ contract LendingP2P is ReentrancyGuard, Ownable {
 
         loans[loanId].lender = msg.sender;
         loans[loanId].startTimestamp = uint64(block.timestamp);
+        loans[loanId].status = Status.Active;
 
         IERC20(_loan.collateral).transferFrom(_loan.borrower, address(this), _loan.collateralAmount);
-        IERC20(_loan.asset).transferFrom(_loan.lender, _loan.borrower, _loan.assetAmount);
+        IERC20(_loan.asset).transferFrom(loans[loanId].lender, _loan.borrower, _loan.assetAmount);
 
         emit LoanFilled(loanId);
     }
@@ -159,9 +160,10 @@ contract LendingP2P is ReentrancyGuard, Ownable {
 
         loans[loanId].status = Status.Repaid;
 
-        IERC20(_loan.asset).transferFrom(address(this), owner(), protocolFee);
+        IERC20(_loan.collateral).transfer(_loan.borrower, _loan.collateralAmount);
+
+        IERC20(_loan.asset).transferFrom(_loan.borrower, owner(), protocolFee);
         IERC20(_loan.asset).transferFrom(_loan.borrower, _loan.lender, amountToLender);
-        IERC20(_loan.collateral).transferFrom(address(this), _loan.borrower, _loan.collateralAmount);
 
         emit LoanRepaid(loanId);
         emit ProtocolRevenue(loanId, _loan.asset, protocolFee);

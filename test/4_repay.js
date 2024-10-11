@@ -12,6 +12,7 @@ describe("Loan Contract", function () {
 
     let borrower;
     let lender;
+    let deployer;
 
     let loan;
     let mockAsset;
@@ -19,14 +20,13 @@ describe("Loan Contract", function () {
 
     beforeEach(async function () {
         const LoanContract = await ethers.getContractFactory("LendingP2P"); 
-        [borrower, lender] = await ethers.getSigners();
+        [borrower, lender, deployer] = await ethers.getSigners();
 
-        loanContract = await LoanContract.deploy();
+        loanContract = await LoanContract.connect(deployer).deploy();
 
         const MockToken = await ethers.getContractFactory("MockERC20"); 
-        mockAsset = await MockToken.deploy()
-        mockCollateral = await MockToken.deploy()
-
+        mockAsset = await MockToken.connect(borrower).deploy()
+        mockCollateral = await MockToken.connect(borrower).deploy()
 
         loan = {
             borrower: borrower.address,
@@ -50,11 +50,11 @@ describe("Loan Contract", function () {
         };
     });
 
-    it("should succeed: accept a valid loan request", async function () {
+    it("should succeed: repay a valid loan", async function () {
         const encodedLoan = encodeLoan(loan)
-        await loanContract.requestLoan(encodedLoan);
+        await loanContract.connect(borrower).requestLoan(encodedLoan);
 
-        await mockAsset.transfer(lender.address, loan.assetAmount)
+        await mockAsset.connect(borrower).transfer(lender.address, loan.assetAmount)
 
         let balancesBefore = {
             borrower: {
@@ -121,35 +121,43 @@ describe("Loan Contract", function () {
         expect(storedLoan.liquidation.collateralOracle).to.equal(loan.liq.collateralOracle);
 
         expect(storedLoan.status).to.equal(2);
-    });
 
-    it("should fail: accept a alredy accepted loan request", async function () {
-        const encodedLoan = encodeLoan(loan)
-        await loanContract.requestLoan(encodedLoan);
+        //repay loan
+        await mockAsset.connect(borrower).approve(loanContract.target, loan.repaymentAmount)
+        await loanContract.connect(borrower).repayLoan(0);
 
-        await mockAsset.transfer(lender.address, loan.assetAmount)
-        await mockCollateral.connect(borrower).approve(loanContract.target, loan.collateralAmount)
-        await mockAsset.connect(lender).approve(loanContract.target, loan.assetAmount)
+        let balancesAfterRepay = {
+            borrower: {
+                asset: await mockAsset.balanceOf(borrower.address),
+                collateral: await mockCollateral.balanceOf(borrower.address),
+            },
+            lender: {
+                asset: await mockAsset.balanceOf(lender.address),
+                collateral: await mockCollateral.balanceOf(lender.address),
+            },
+            contract: {
+                asset: await mockAsset.balanceOf(loanContract.target),
+                collateral: await mockCollateral.balanceOf(loanContract.target),
+            },
+            deployer: {
+                asset: await mockAsset.balanceOf(deployer.address)
+            }
+        }
 
-        await loanContract.connect(lender).fillRequest(0);
-        expect((await loanContract.loans(0)).startTimestamp).to.not.equal(0);
+        let fee = (loan.repaymentAmount - loan.assetAmount) * ethers.toBigInt(2000) / ethers.toBigInt(10000);
 
-        await expect(loanContract.connect(lender).fillRequest(0)).to.revertedWith("invalid status")
-    });
+        expect(balancesAfterRepay.borrower.asset).to.equal(balancesBefore.borrower.asset + loan.assetAmount - loan.repaymentAmount);
+        expect(balancesAfterRepay.borrower.collateral).to.equal(balancesBefore.borrower.collateral);
 
-    it("should fail: accept an expired loan request", async function () {
-        const encodedLoan = encodeLoan(loan)
-        await loanContract.requestLoan(encodedLoan);
+        expect(balancesAfterRepay.lender.asset).to.equal(balancesBefore.lender.asset - loan.assetAmount + loan.repaymentAmount - fee);
+        expect(balancesAfterRepay.lender.collateral).to.equal("0");
 
-        await mockAsset.transfer(lender.address, loan.assetAmount)
-        await mockCollateral.connect(borrower).approve(loanContract.target, loan.collateralAmount)
-        await mockAsset.connect(lender).approve(loanContract.target, loan.assetAmount)
+        expect(balancesAfterRepay.contract.asset).to.equal("0");
+        expect(balancesAfterRepay.contract.collateral).to.equal("0");
 
-        let expirationDuration = await loanContract.REQUEST_EXPIRATION_DURATION()
-        let nextTimestamp = Number(await time.latest()) + Number(expirationDuration) + 100
+        expect(balancesAfterRepay.deployer.asset).to.equal(fee);
 
-        await time.setNextBlockTimestamp(nextTimestamp)
-
-        await expect(loanContract.fillRequest(0)).to.revertedWith("already expired")
+        const storedLoanAfterRepay = await loanContract.loans(0);
+        expect(storedLoanAfterRepay.status).to.equal(3);
     });
 });

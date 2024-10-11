@@ -1,5 +1,11 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const {
+    time,
+    loadFixture,
+} = require("@nomicfoundation/hardhat-toolbox/network-helpers");
+
+const { encodeLoan } = require("./utils")
 
 describe("Loan Contract", function () {
     let loanContract;
@@ -22,7 +28,7 @@ describe("Loan Contract", function () {
             assetAmount: ethers.parseEther("10"),
             repaymentAmount: ethers.parseEther("12"),
             collateralAmount: ethers.parseEther("1"),
-    
+            
             duration: 30 * 24 * 60 * 60, 
     
             liq: {
@@ -35,7 +41,7 @@ describe("Loan Contract", function () {
         };
     });
 
-    it("should request a new valid loan", async function () {
+    it("should succeed: request a new valid loan", async function () {
         const encodedLoan = encodeLoan(loan)
 
         await expect(loanContract.requestLoan(encodedLoan))
@@ -64,29 +70,29 @@ describe("Loan Contract", function () {
         expect(storedLoan.status).to.equal(0);
     });
 
-    it("should request a new invalid loan repayment amount", async function () {
+    it("should succeed: request a new invalid loan repayment amount", async function () {
         loan.repaymentAmount = 99
         loan.assetAmount = 100
         const encodedLoan = encodeLoan(loan)
 
-        await expect(loanContract.requestLoan(encodedLoan)).to.revertedWith("amount > repayment")
+        await expect(loanContract.requestLoan(encodedLoan)).to.revertedWith("amount <= repayment")
     });
 
-    it("should request a new invalid loan collateral & asset", async function () {
+    it("should fail: request a new invalid loan with invalid borrower", async function () {
+        loan.borrower = "0x0000000000000000000000000000000000000003"
+        const encodedLoan = encodeLoan(loan)
+
+        await expect(loanContract.requestLoan(encodedLoan)).to.revertedWith("borrower != msg.sender")
+    });
+
+    it("should fail: request a new invalid loan collateral & asset", async function () {
         loan.asset = loan.collateral
         const encodedLoan = encodeLoan(loan)
 
         await expect(loanContract.requestLoan(encodedLoan)).to.revertedWith("asset == collateral")
     });
 
-    it("should request a new invalid loan collateral & asset", async function () {
-        loan.asset = loan.collateral
-        const encodedLoan = encodeLoan(loan)
-
-        await expect(loanContract.requestLoan(encodedLoan)).to.revertedWith("asset == collateral")
-    });
-
-    it("should cancel a loan request as owner", async function () {
+    it("should succeed: cancel a loan request as owner", async function () {
         const encodedLoan = encodeLoan(loan)
         await loanContract.requestLoan(encodedLoan)
 
@@ -94,39 +100,30 @@ describe("Loan Contract", function () {
             .to.emit(loanContract, "LoanCanceled")
             .withArgs(0);
     });
-
     
-    it("should fail cancel a loan request as non-owner", async function () {
+    it("should fail: cancel a loan request as non-owner", async function () {
         const encodedLoan = encodeLoan(loan)
         await loanContract.requestLoan(encodedLoan)
 
-        await expect(loanContract.connect(addr1).cancelLoan(0)).to.revertedWith("sender is not borrower")
+        await expect(loanContract.connect(addr1).cancelLoan(0)).to.revertedWith("sender != borrower")
     });
 
-    it("should fail cancel a loan request using invalid id", async function () {
+    it("should fail: cancel a loan request using invalid id", async function () {
         const encodedLoan = encodeLoan(loan)
         await loanContract.requestLoan(encodedLoan)
 
-        await expect(loanContract.cancelLoan(1)).to.revertedWith("request already expired") //since createdTimestamp = 0
+        await expect(loanContract.cancelLoan(1)).to.revertedWith("already expired") //since createdTimestamp = 0
+    });
+
+    it("should fail: cancel already expired loan", async function () {
+        const encodedLoan = encodeLoan(loan)
+        await loanContract.requestLoan(encodedLoan)
+
+        let expirationDuration = await loanContract.REQUEST_EXPIRATION_DURATION()
+        let nextTimestamp = Number(parseFloat((new Date().getTime() / 1000)).toFixed(0)) + Number(expirationDuration) + 100
+
+        await time.setNextBlockTimestamp(nextTimestamp)
+
+        await expect(loanContract.cancelLoan(0)).to.revertedWith("already expired")
     });
 });
-
-function encodeLoan(loan){
-    const abiEncoder = new ethers.AbiCoder()
-    return abiEncoder.encode(
-        [
-            "address", "address", "address", "address", 
-            "uint256", "uint256", "uint256", 
-            "uint256", "uint256", "uint256",
-            "tuple(bool, uint256, address, address)",
-            "uint8"
-        ],
-        [
-            loan.borrower, loan.lender, loan.asset, loan.collateral,
-            loan.assetAmount, loan.repaymentAmount, loan.collateralAmount,
-            0, 0, loan.duration,
-            [loan.liq.isLiquidatable, loan.liq.liquidationThreshold, loan.liq.assetOracle, loan.liq.collateralOracle],
-            loan.status
-        ]
-    );
-}
