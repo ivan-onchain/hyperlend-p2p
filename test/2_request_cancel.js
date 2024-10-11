@@ -7,7 +7,7 @@ const {
 
 const { encodeLoan } = require("./utils")
 
-describe("Loan Contract", function () {
+describe("Request & Cancel", function () {
     let loanContract;
     let owner;
     let addr1;

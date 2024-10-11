@@ -7,7 +7,7 @@ const {
 
 const { encodeLoan } = require("./utils")
 
-describe("Loan Contract", function () {
+describe("Repay", function () {
     let loanContract;
 
     let borrower;
@@ -159,5 +159,24 @@ describe("Loan Contract", function () {
 
         const storedLoanAfterRepay = await loanContract.loans(0);
         expect(storedLoanAfterRepay.status).to.equal(3);
+    });
+
+    it("should fail: repay a already repaid loan", async function () {
+        const encodedLoan = encodeLoan(loan)
+        await loanContract.connect(borrower).requestLoan(encodedLoan);
+
+        await mockAsset.connect(borrower).transfer(lender.address, loan.assetAmount)
+        await mockCollateral.connect(borrower).approve(loanContract.target, loan.collateralAmount)
+        await mockAsset.connect(lender).approve(loanContract.target, loan.assetAmount)
+
+        await loanContract.connect(lender).fillRequest(0);
+
+        const storedLoan = await loanContract.loans(0);
+        expect(storedLoan.status).to.equal(2);
+
+        await mockAsset.connect(borrower).approve(loanContract.target, loan.repaymentAmount)
+        await loanContract.connect(borrower).repayLoan(0);
+
+        await expect(loanContract.connect(borrower).repayLoan(0)).to.revertedWith("invalid status")
     });
 });
