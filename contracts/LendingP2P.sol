@@ -23,9 +23,9 @@ contract LendingP2P is ReentrancyGuard, Ownable {
 
     constructor() Ownable(msg.sender) {}
 
-    /* ●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・ */
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
     /*                          Structs                         */
-    /* ●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・ */
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
     /// @notice details about loan liquidation
     struct Liquidation {
@@ -54,9 +54,9 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         Status status;           // current status of the loan
     }
 
-    /* ●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・ */
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
     /*                         Events                           */
-    /* ●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・ */
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
     /// @notice emitted when a new loan is requested
     event LoanRequested(uint256 indexed loanId);
@@ -71,9 +71,9 @@ contract LendingP2P is ReentrancyGuard, Ownable {
     /// @notice emitted when protocol earns some revenue
     event ProtocolRevenue(uint256 indexed loanId, address indexed asset, uint256 amount);
 
-    /* ●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・ */
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
     /*                        Constants                         */
-    /* ●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・ */
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
     /// @notice maximum duration that the loan request can be active
     uint256 public constant REQUEST_EXPIRATION_DURATION = 7 days;
@@ -84,18 +84,18 @@ contract LendingP2P is ReentrancyGuard, Ownable {
     /// @notice fee paid to the protocol, in bps
     uint256 public constant PROTOCOL_LIQUIDATION_FEE = 20;
 
-    /* ●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・ */
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
     /*                        Variables                         */
-    /* ●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・ */
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
     /// @notice length of all loans
     uint256 public loanLength = 0;
     /// @notice mapping of all loans
     mapping(uint256 => Loan) public loans;
 
-    /* ●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・ */
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
     /*                    Public Functions                      */
-    /* ●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・ */
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
     /// @notice function used to request a new loan
     function requestLoan(bytes memory _encodedLoan) external nonReentrant {
@@ -142,7 +142,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         loans[loanId].status = Status.Active;
 
         IERC20(_loan.collateral).transferFrom(_loan.borrower, address(this), _loan.collateralAmount);
-        IERC20(_loan.asset).transferFrom(loans[loanId].lender, _loan.borrower, _loan.assetAmount);
+        IERC20(_loan.asset).transferFrom(msg.sender, _loan.borrower, _loan.assetAmount);
 
         emit LoanFilled(loanId);
     }
@@ -183,9 +183,9 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         }
     }
 
-    /* ●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・ */
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
     /*                    Helper Functions                      */
-    /* ●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・●・○・●・○・●・ */
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
     /// @notice internal helper function used to liquidate a loan
     function _liquidate(uint256 loanId) internal {
