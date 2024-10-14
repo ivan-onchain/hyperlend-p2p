@@ -13,6 +13,7 @@ describe("Liquidate", function () {
     let borrower;
     let lender;
     let deployer;
+    let liquidator;
 
     let loan;
     let mockAsset;
@@ -23,7 +24,7 @@ describe("Liquidate", function () {
 
     beforeEach(async function () {
         const LoanContract = await ethers.getContractFactory("LendingP2P"); 
-        [borrower, lender, deployer] = await ethers.getSigners();
+        [borrower, lender, deployer, liquidator] = await ethers.getSigners();
 
         loanContract = await LoanContract.connect(deployer).deploy();
 
@@ -74,6 +75,17 @@ describe("Liquidate", function () {
             lender: {
                 asset: await mockAsset.balanceOf(lender.address),
                 collateral: await mockCollateral.balanceOf(lender.address),
+            },
+            contract: {
+                asset: await mockAsset.balanceOf(loanContract.target),
+                collateral: await mockCollateral.balanceOf(loanContract.target),
+            },
+            deployer: {
+                asset: await mockAsset.balanceOf(deployer.address),
+                collateral: await mockCollateral.balanceOf(deployer.address),
+            },
+            liquidator: {
+                collateral: await mockCollateral.balanceOf(liquidator.address),
             }
         }
 
@@ -132,9 +144,11 @@ describe("Liquidate", function () {
 
         expect(storedLoan.status).to.equal(2);
 
+        //make loan liquidatable
+        await aggregatorAsset.connect(deployer).setAnswer(250000000000);
+        
         //liquidate loan
-        await mockAsset.connect(borrower).approve(loanContract.target, loan.repaymentAmount)
-        await loanContract.connect(borrower).repayLoan(0);
+        await loanContract.connect(liquidator).liquidateLoan(0);
 
         let balancesAfterLiquidate = {
             borrower: {
@@ -150,11 +164,23 @@ describe("Liquidate", function () {
                 collateral: await mockCollateral.balanceOf(loanContract.target),
             },
             deployer: {
-                asset: await mockAsset.balanceOf(deployer.address)
+                asset: await mockAsset.balanceOf(deployer.address),
+                collateral: await mockCollateral.balanceOf(deployer.address),
+            },
+            liquidator: {
+                collateral: await mockCollateral.balanceOf(liquidator.address),
             }
         }
 
-        // expect(balancesAfterLiquidate.borrower.asset).to.equal(balancesBefore.borrower.asset + loan.assetAmount - loan.repaymentAmount);
+        let liquidatorBonus = loan.collateralAmount * ethers.toBigInt(100) / ethers.toBigInt(10000);
+        let protocolFee = loan.collateralAmount * ethers.toBigInt(20) / ethers.toBigInt(10000);
+        let lenderAmount = loan.collateralAmount - liquidatorBonus - protocolFee;
+
+        expect(balancesAfterLiquidate.borrower.collateral).to.equal(balancesBefore.borrower.collateral - loan.collateralAmount);
+        expect(balancesAfterLiquidate.contract.collateral).to.equal("0");
+        expect(balancesAfterLiquidate.liquidator.collateral).to.equal(liquidatorBonus);
+        expect(balancesAfterLiquidate.deployer.collateral).to.equal(balancesBefore.deployer.collateral + protocolFee);
+        expect(balancesAfterLiquidate.lender.collateral).to.equal(balancesBefore.lender.collateral + lenderAmount);
 
         const storedLoanAfterLiquidate = await loanContract.loans(0);
         expect(storedLoanAfterLiquidate.status).to.equal(4);

@@ -197,9 +197,9 @@ contract LendingP2P is ReentrancyGuard, Ownable {
 
         loans[loanId].status = Status.Liquidated;
         
-        IERC20(_loan.collateral).transferFrom(address(this), _loan.lender, lenderAmount);
-        IERC20(_loan.collateral).transferFrom(address(this), msg.sender, liquidatorBonus);
-        IERC20(_loan.collateral).transferFrom(address(this), owner(), protocolFee);
+        IERC20(_loan.collateral).transfer(_loan.lender, lenderAmount);
+        IERC20(_loan.collateral).transfer(msg.sender, liquidatorBonus);
+        IERC20(_loan.collateral).transfer(owner(), protocolFee);
 
         emit LoanLiquidated(loanId);
         emit ProtocolRevenue(loanId, _loan.collateral, protocolFee);
