@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.20;
 
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
@@ -87,6 +87,8 @@ contract LendingP2P is ReentrancyGuard, Ownable {
     /*                     Protocol config                      */
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
+    /// @notice precision factor, used when calculating asset values, to avoid precision loss
+    uint256 public PRECISION_FACTOR = 1e12;
     /// @notice maximum duration that the loan request can be active
     uint256 public REQUEST_EXPIRATION_DURATION;
     /// @notice protocol fee, charged on interest, in bps
@@ -245,14 +247,18 @@ contract LendingP2P is ReentrancyGuard, Ownable {
             require(assetPrice > 0, "invalid oracle price");
             require(collateralPrice > 0, "invalid oracle price");
 
+            //users are expected to use only standard ERC20Metadata tokens that include decimals()
             uint8 assetDecimals = IERC20Metadata(_loan.asset).decimals();
             uint8 collateralDecimals = IERC20Metadata(_loan.collateral).decimals();
 
-            uint256 loanValueUsd = _loan.assetAmount * assetPrice / (10 ** assetDecimals);
-            uint256 collateralValueUsd = _loan.collateralAmount * collateralPrice / (10 ** collateralDecimals);
+            //uint256.max is 1.15e77 and chainlink price is expected to be under 1e12, 
+            //so overflow would only happen if amount > 1e53, with 0 decimals
+            //this is acceptable risk, and users are expected to not use amounts that high
+            uint256 loanValueUsd = PRECISION_FACTOR * _loan.assetAmount * assetPrice / (10 ** assetDecimals);
+            uint256 collateralValueUsd = PRECISION_FACTOR * _loan.collateralAmount * collateralPrice / (10 ** collateralDecimals);
 
             return (loanValueUsd > (collateralValueUsd * _loan.liquidation.liquidationThreshold / 10000));
-        } 
+        }
 
         return false;
     }
