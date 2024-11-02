@@ -88,7 +88,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
     /// @notice precision factor, used when calculating asset values, to avoid precision loss
-    uint256 public PRECISION_FACTOR = 1e12;
+    uint256 public PRECISION_FACTOR = 1e8;
     /// @notice maximum duration that the loan request can be active
     uint256 public REQUEST_EXPIRATION_DURATION;
     /// @notice protocol fee, charged on interest, in bps
@@ -103,7 +103,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
     /// @notice length of all loans
-    uint256 public loanLength = 0;
+    uint256 public loanLength;
     /// @notice mapping of all loans
     mapping(uint256 => Loan) public loans;
     /// @notice address that receives the fees
