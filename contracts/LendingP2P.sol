@@ -4,12 +4,13 @@ pragma solidity ^0.8.20;
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 import { AggregatorInterface } from './dependencies/AggregatorInterface.sol';
 
 /**
  * @title  LendingP2P
- * @author HyperLend (@fbsloXBT)
+ * @author HyperLend developers
  * @notice Main contract of the HyperLend P2P lending market.
  */
 contract LendingP2P is ReentrancyGuard, Ownable {
@@ -160,10 +161,13 @@ contract LendingP2P is ReentrancyGuard, Ownable {
 
         loans[loanId].status = Status.Repaid;
 
-        IERC20(_loan.collateral).transfer(_loan.borrower, _loan.collateralAmount);
+        //since token could be ERC777 and lender could be a contract, there is a possible DoS attack vector during repayment/liquidtion
+        //this is acceptable, since borrowers are expected to be aware of the risk when using non-standard tokens + lender would also lose their assets
+        IERC20(_loan.asset).transferFrom(_loan.borrower, _loan.lender, amountToLender); //return asset
+        IERC20(_loan.collateral).transfer(_loan.borrower, _loan.collateralAmount); //return collateral
 
-        IERC20(_loan.asset).transferFrom(_loan.borrower, owner(), protocolFee);
-        IERC20(_loan.asset).transferFrom(_loan.borrower, _loan.lender, amountToLender);
+        //since many tokens don't allow transfers to 0x0, renounced ownership could cause a DoS
+        if (owner() != address(0)) IERC20(_loan.asset).transferFrom(_loan.borrower, owner(), protocolFee);
 
         emit LoanRepaid(loanId);
         emit ProtocolRevenue(loanId, _loan.asset, protocolFee);
@@ -199,7 +203,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         
         IERC20(_loan.collateral).transfer(_loan.lender, lenderAmount);
         IERC20(_loan.collateral).transfer(msg.sender, liquidatorBonus);
-        IERC20(_loan.collateral).transfer(owner(), protocolFee);
+        if (owner() != address(0)) IERC20(_loan.collateral).transfer(owner(), protocolFee);
 
         emit LoanLiquidated(loanId);
         emit ProtocolRevenue(loanId, _loan.collateral, protocolFee);
@@ -212,10 +216,16 @@ contract LendingP2P is ReentrancyGuard, Ownable {
             uint256 assetPrice = uint256(AggregatorInterface(_loan.liquidation.assetOracle).latestAnswer());
             uint256 collateralPrice = uint256(AggregatorInterface(_loan.liquidation.collateralOracle).latestAnswer());
 
-            uint256 loanValue = assetPrice * _loan.assetAmount;
-            uint256 collateralValue = collateralPrice * _loan.collateralAmount;
+            require(assetPrice > 0, "invalid oracle asset price");
+            require(collateralPrice > 0, "invalid oracle collateral price");
 
-            return (loanValue > (collateralValue * _loan.liquidation.liquidationThreshold / 10000));
+            uint8 assetDecimals = IERC20Metadata(_loan.asset).decimals();
+            uint8 collateralDecimals = IERC20Metadata(_loan.collateral).decimals();
+
+            uint256 loanValueUsd = _loan.assetAmount * assetPrice / (10 ** assetDecimals);
+            uint256 collateralValueUsd = _loan.collateralAmount * collateralPrice / (10 ** collateralDecimals);
+
+            return (loanValueUsd > (collateralValueUsd * _loan.liquidation.liquidationThreshold / 10000));
         } 
 
         return false;
