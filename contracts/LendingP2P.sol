@@ -197,7 +197,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
     /// @notice function used to liquidate a loan
     /// @dev loan can be liquiated either if it's overdue, or if it's insolvent (only for liquidatable loans)
     /// @dev doesn't revert if the loan is not liquidatable
-    function liquidateLoan(uint256 loanId) external returns (bool) nonReentrant {
+    function liquidateLoan(uint256 loanId) external nonReentrant returns (bool) {
         Loan memory _loan = loans[loanId];
 
         require(_loan.status == Status.Active, "invalid status");
