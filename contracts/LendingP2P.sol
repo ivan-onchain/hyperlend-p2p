@@ -5,6 +5,7 @@ import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.s
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import { AggregatorInterface } from './dependencies/AggregatorInterface.sol';
 
@@ -14,6 +15,8 @@ import { AggregatorInterface } from './dependencies/AggregatorInterface.sol';
  * @notice Main contract of the HyperLend P2P lending market.
  */
 contract LendingP2P is ReentrancyGuard, Ownable {
+    using SafeERC20 for IERC20;
+
     enum Status {
         Pending,
         Canceled,
@@ -21,8 +24,6 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         Repaid,
         Liquidated
     }
-
-    constructor() Ownable(msg.sender) {}
 
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
     /*                          Structs                         */
@@ -51,8 +52,8 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         uint64 startTimestamp;    // timestamp when loan was accepted
         uint64 duration;          // duration of the loan in seconds
 
-        Liquidation liquidation; // details about the loan liquidation
-        Status status;           // current status of the loan
+        Liquidation liquidation;  // details about the loan liquidation
+        Status status;            // current status of the loan
     }
 
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
@@ -60,30 +61,40 @@ contract LendingP2P is ReentrancyGuard, Ownable {
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
     /// @notice emitted when a new loan is requested
-    event LoanRequested(uint256 indexed loanId);
+    event LoanRequested(uint256 indexed loanId, address indexed borrower);
     /// @notice emitted when a loan is canceled
-    event LoanCanceled(uint256 indexed loanId);
+    event LoanCanceled(uint256 indexed loanId, address indexed borrower);
     /// @notice emitted when a loan request is filled
-    event LoanFilled(uint256 indexed loanId);
+    event LoanFilled(uint256 indexed loanId, address indexed borrower, address indexed lender);
     /// @notice emitted when a loan is repaid
-    event LoanRepaid(uint256 indexed loanId);
+    event LoanRepaid(uint256 indexed loanId, address indexed borrower, address indexed lender);
     /// @notice emitted when a loan is liquidated
     event LoanLiquidated(uint256 indexed loanId);
     /// @notice emitted when protocol earns some revenue
     event ProtocolRevenue(uint256 indexed loanId, address indexed asset, uint256 amount);
+    /// @notice emitted when fee collector changes
+    event FeeCollectorUpdated(address oldFeeCollector, address newFeeCollector);
+    /// @notice emitted when expiration duration changes
+    event ExpirationDurationUpdated(uint256 oldExpirationDuration, uint256 newExpirationDuration);
+    /// @notice emitted when protocol fee changes
+    event ProtocolFeeUpdated(uint256 oldProtocolFee, uint256 newProtocolFee);
+    /// @notice emitted when liquidator bonus changes
+    event LiquidatorBonusUpdated(uint256 oldLiquidatorBonus, uint256 newLiquidatorBonus);
+    /// @notice emitted when protocol liquidation fee changes
+    event ProtocolLiquidationFeeUpdated(uint256 oldProtocolLiquidationFee, uint256 newProtocolLiquidationFee);
 
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-    /*                        Constants                         */
+    /*                     Protocol config                      */
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
     /// @notice maximum duration that the loan request can be active
-    uint256 public constant REQUEST_EXPIRATION_DURATION = 7 days;
+    uint256 public REQUEST_EXPIRATION_DURATION;
     /// @notice protocol fee, charged on interest, in bps
-    uint256 public constant PROTOCOL_FEE = 2000;
+    uint256 public PROTOCOL_FEE;
     /// @notice fee paid to the liquidator, in bps
-    uint256 public constant LIQUIDATOR_BONUS_BPS = 100;
+    uint256 public LIQUIDATOR_BONUS_BPS;
     /// @notice fee paid to the protocol, in bps
-    uint256 public constant PROTOCOL_LIQUIDATION_FEE = 20;
+    uint256 public PROTOCOL_LIQUIDATION_FEE;
 
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
     /*                        Variables                         */
@@ -93,10 +104,21 @@ contract LendingP2P is ReentrancyGuard, Ownable {
     uint256 public loanLength = 0;
     /// @notice mapping of all loans
     mapping(uint256 => Loan) public loans;
+    /// @notice address that receives the fees
+    address public feeCollector;
 
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
     /*                    Public Functions                      */
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+    constructor() Ownable(msg.sender) {
+        feeCollector = msg.sender;
+
+        REQUEST_EXPIRATION_DURATION = 7 days;
+        PROTOCOL_FEE = 2000;
+        LIQUIDATOR_BONUS_BPS = 100;
+        PROTOCOL_LIQUIDATION_FEE = 20;
+    }
 
     /// @notice function used to request a new loan
     function requestLoan(bytes memory _encodedLoan) external nonReentrant {
@@ -114,7 +136,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         loans[loanLength] = loan;
         loanLength += 1;
 
-        emit LoanRequested(loanLength - 1);
+        emit LoanRequested(loanLength - 1, msg.sender);
     }
 
     /// @notice function used to cancel a unfilled loan
@@ -125,7 +147,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
 
         loans[loanId].status = Status.Canceled;
 
-        emit LoanCanceled(loanId);
+        emit LoanCanceled(loanId, msg.sender);
     }
 
     /// @notice function used to fill a loan request
@@ -142,10 +164,10 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         loans[loanId].startTimestamp = uint64(block.timestamp);
         loans[loanId].status = Status.Active;
 
-        IERC20(_loan.collateral).transferFrom(_loan.borrower, address(this), _loan.collateralAmount);
-        IERC20(_loan.asset).transferFrom(msg.sender, _loan.borrower, _loan.assetAmount);
+        IERC20(_loan.collateral).safeTransferFrom(_loan.borrower, address(this), _loan.collateralAmount);
+        IERC20(_loan.asset).safeTransferFrom(msg.sender, _loan.borrower, _loan.assetAmount);
 
-        emit LoanFilled(loanId);
+        emit LoanFilled(loanId, _loan.borrower, msg.sender);
     }
 
     /// @notice function used to repay a loan
@@ -163,13 +185,12 @@ contract LendingP2P is ReentrancyGuard, Ownable {
 
         //since token could be ERC777 and lender could be a contract, there is a possible DoS attack vector during repayment/liquidtion
         //this is acceptable, since borrowers are expected to be aware of the risk when using non-standard tokens + lender would also lose their assets
-        IERC20(_loan.asset).transferFrom(_loan.borrower, _loan.lender, amountToLender); //return asset
-        IERC20(_loan.collateral).transfer(_loan.borrower, _loan.collateralAmount); //return collateral
+        IERC20(_loan.asset).safeTransferFrom(_loan.borrower, _loan.lender, amountToLender); //return asset
+        IERC20(_loan.collateral).safeTransfer(_loan.borrower, _loan.collateralAmount); //return collateral
 
-        //since many tokens don't allow transfers to 0x0, renounced ownership could cause a DoS
-        if (owner() != address(0)) IERC20(_loan.asset).transferFrom(_loan.borrower, owner(), protocolFee);
+        IERC20(_loan.asset).safeTransferFrom(_loan.borrower, feeCollector, protocolFee);
 
-        emit LoanRepaid(loanId);
+        emit LoanRepaid(loanId, _loan.borrower, _loan.lender);
         emit ProtocolRevenue(loanId, _loan.asset, protocolFee);
     }   
 
@@ -201,9 +222,9 @@ contract LendingP2P is ReentrancyGuard, Ownable {
 
         loans[loanId].status = Status.Liquidated;
         
-        IERC20(_loan.collateral).transfer(_loan.lender, lenderAmount);
-        IERC20(_loan.collateral).transfer(msg.sender, liquidatorBonus);
-        if (owner() != address(0)) IERC20(_loan.collateral).transfer(owner(), protocolFee);
+        IERC20(_loan.collateral).safeTransfer(_loan.lender, lenderAmount);
+        IERC20(_loan.collateral).safeTransfer(msg.sender, liquidatorBonus);
+        IERC20(_loan.collateral).safeTransfer(feeCollector, protocolFee);
 
         emit LoanLiquidated(loanId);
         emit ProtocolRevenue(loanId, _loan.collateral, protocolFee);
@@ -229,5 +250,48 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         } 
 
         return false;
+    }
+
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+    /*                     Admin Functions                      */
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+    /// @notice used to change fee collector
+    /// @param _newFeeCollector address that will receive the fees
+    /// @dev since some tokens don't allow transfers to addres(0), it can't be set to it
+    function setFeeCollector(address _newFeeCollector) external onlyOwner() {
+        require(_newFeeCollector != address(0), "feeCollector == address(0)");
+        emit FeeCollectorUpdated(feeCollector, _newFeeCollector);
+        feeCollector = _newFeeCollector;
+    }
+
+    /// @notice used to change loan request expiration
+    /// @param _newExpirationDuration loan expiration in seconds
+    function setRequestExpirationDuration(uint256 _newExpirationDuration) external onlyOwner() {
+        require(_newExpirationDuration > 1 days, "_newExpirationDuration < 1 day");
+        emit ExpirationDurationUpdated(REQUEST_EXPIRATION_DURATION, _newExpirationDuration);
+        REQUEST_EXPIRATION_DURATION = _newExpirationDuration;
+    }
+
+    /// @notice used to change the protocol fee percentage
+    /// @param _newProtocolFee new fee in basis points
+    function setProtocolFee(uint256 _newProtocolFee) external onlyOwner() {
+        require(_newProtocolFee < 2000, "protocolFee > 2000 bps");
+        emit ProtocolFeeUpdated(PROTOCOL_FEE, _newProtocolFee);
+        PROTOCOL_FEE = _newProtocolFee;
+    }
+
+    /// @notice used to chnage protocol liquidation config
+    /// @param _newLiquidatorBonus new bonus paid to the liquidator, in basis points
+    /// @param _newProtocolLiquidationFee new fee paid to the protocol, in basis points
+    function setLiquidationConfig(uint256 _newLiquidatorBonus, uint256 _newProtocolLiquidationFee) external onlyOwner() {
+        require(_newLiquidatorBonus < 1000, "_newLiquidatorBonus > 1000 bps");
+        require(_newProtocolLiquidationFee < 500, "_newProtocolLiquidationFee > 500 bps");
+
+        emit LiquidatorBonusUpdated(LIQUIDATOR_BONUS_BPS, _newLiquidatorBonus);
+        emit ProtocolLiquidationFeeUpdated(PROTOCOL_LIQUIDATION_FEE, _newProtocolLiquidationFee);
+
+        LIQUIDATOR_BONUS_BPS = _newLiquidatorBonus;
+        PROTOCOL_LIQUIDATION_FEE = _newProtocolLiquidationFee;
     }
 }
