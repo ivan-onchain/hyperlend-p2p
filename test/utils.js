@@ -5,15 +5,15 @@ function encodeLoan(loan){
             "address", "address", "address", "address", 
             "uint256", "uint256", "uint256", 
             "uint256", "uint256", "uint256",
-            "tuple(bool, uint256, address, address)",
-            "uint8"
+            "uint8",
+            "tuple(bool, uint256, address, address)"
         ],
         [
             loan.borrower, loan.lender, loan.asset, loan.collateral,
             loan.assetAmount, loan.repaymentAmount, loan.collateralAmount,
             0, 0, loan.duration,
-            [loan.liq.isLiquidatable, loan.liq.liquidationThreshold, loan.liq.assetOracle, loan.liq.collateralOracle],
             loan.status
+            [loan.liq.isLiquidatable, loan.liq.liquidationThreshold, loan.liq.assetOracle, loan.liq.collateralOracle]
         ]
     );
 }

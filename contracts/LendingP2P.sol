@@ -52,8 +52,8 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         uint64 startTimestamp;    // timestamp when loan was accepted
         uint64 duration;          // duration of the loan in seconds
 
-        Liquidation liquidation;  // details about the loan liquidation
         Status status;            // current status of the loan
+        Liquidation liquidation;  // details about the loan liquidation
     }
 
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
