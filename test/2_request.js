@@ -1,21 +1,16 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const {
-    time,
-    loadFixture,
-} = require("@nomicfoundation/hardhat-toolbox/network-helpers");
 
 const { encodeLoan } = require("./utils")
 
-describe("Request & Cancel", function () {
+describe("Request", function () {
     let loanContract;
     let owner;
-    let addr1;
     let loan;
 
     beforeEach(async function () {
         const LoanContract = await ethers.getContractFactory("LendingP2P"); 
-        [owner, addr1] = await ethers.getSigners();
+        [owner] = await ethers.getSigners();
 
         loanContract = await LoanContract.deploy();
 
@@ -31,7 +26,7 @@ describe("Request & Cancel", function () {
             
             duration: 30 * 24 * 60 * 60, 
     
-            liq: {
+            liquidation: {
                 isLiquidatable: false,
                 liquidationThreshold: 0,
                 assetOracle: '0x0000000000000000000000000000000000000003',
@@ -41,12 +36,12 @@ describe("Request & Cancel", function () {
         };
     });
 
-    it("should succeed: request a new valid loan", async function () {
+    it("should request a new valid loan", async function () {
         const encodedLoan = encodeLoan(loan)
 
         await expect(loanContract.requestLoan(encodedLoan))
             .to.emit(loanContract, "LoanRequested")
-            .withArgs(0);
+            .withArgs(0, loan.borrower);
 
         const storedLoan = await loanContract.loans(0);
 
@@ -62,15 +57,16 @@ describe("Request & Cancel", function () {
         expect(storedLoan.startTimestamp).to.equal(0);
         expect(storedLoan.duration).to.equal(loan.duration);
 
-        expect(storedLoan.liquidation.isLiquidatable).to.equal(loan.liq.isLiquidatable);
-        expect(storedLoan.liquidation.liquidationThreshold).to.equal(loan.liq.liquidationThreshold);
-        expect(storedLoan.liquidation.assetOracle).to.equal(loan.liq.assetOracle);
-        expect(storedLoan.liquidation.collateralOracle).to.equal(loan.liq.collateralOracle);
+        expect(storedLoan.liquidation.isLiquidatable).to.equal(loan.liquidation.isLiquidatable);
+        expect(storedLoan.liquidation.liquidationThreshold).to.equal(loan.liquidation.liquidationThreshold);
+        expect(storedLoan.liquidation.assetOracle).to.equal(loan.liquidation.assetOracle);
+        expect(storedLoan.liquidation.collateralOracle).to.equal(loan.liquidation.collateralOracle);
 
         expect(storedLoan.status).to.equal(0);
+        expect(await loanContract.loanLength()).to.equal(1);
     });
 
-    it("should succeed: request a new invalid loan repayment amount", async function () {
+    it("should revert: request a new loan with invalid repayment amount", async function () {
         loan.repaymentAmount = 99
         loan.assetAmount = 100
         const encodedLoan = encodeLoan(loan)
@@ -78,52 +74,47 @@ describe("Request & Cancel", function () {
         await expect(loanContract.requestLoan(encodedLoan)).to.revertedWith("amount <= repayment")
     });
 
-    it("should fail: request a new invalid loan with invalid borrower", async function () {
+    it("should revert: request a new loan with invalid borrower", async function () {
         loan.borrower = "0x0000000000000000000000000000000000000003"
         const encodedLoan = encodeLoan(loan)
 
         await expect(loanContract.requestLoan(encodedLoan)).to.revertedWith("borrower != msg.sender")
     });
 
-    it("should fail: request a new invalid loan collateral & asset", async function () {
+    it("should revert: request a new loan with invalid liquidationThreshold", async function () {
+        loan.liquidation.liquidationThreshold = "10001"
+        const encodedLoan = encodeLoan(loan)
+
+        await expect(loanContract.requestLoan(encodedLoan)).to.revertedWith("liq threshold > max bps")
+    });
+
+    it("should revert: request a new invalid loan: collateral == asset", async function () {
         loan.asset = loan.collateral
         const encodedLoan = encodeLoan(loan)
 
         await expect(loanContract.requestLoan(encodedLoan)).to.revertedWith("asset == collateral")
     });
 
-    it("should succeed: cancel a loan request as owner", async function () {
-        const encodedLoan = encodeLoan(loan)
-        await loanContract.requestLoan(encodedLoan)
-
-        await expect(loanContract.cancelLoan(0))
-            .to.emit(loanContract, "LoanCanceled")
-            .withArgs(0);
-    });
-    
-    it("should fail: cancel a loan request as non-owner", async function () {
-        const encodedLoan = encodeLoan(loan)
-        await loanContract.requestLoan(encodedLoan)
-
-        await expect(loanContract.connect(addr1).cancelLoan(0)).to.revertedWith("sender != borrower")
-    });
-
-    it("should fail: cancel a loan request using invalid id", async function () {
-        const encodedLoan = encodeLoan(loan)
-        await loanContract.requestLoan(encodedLoan)
-
-        await expect(loanContract.cancelLoan(1)).to.revertedWith("already expired") //since createdTimestamp = 0
-    });
-
-    it("should fail: cancel already expired loan", async function () {
-        const encodedLoan = encodeLoan(loan)
-        await loanContract.requestLoan(encodedLoan)
-
-        let expirationDuration = await loanContract.REQUEST_EXPIRATION_DURATION()
-        let nextTimestamp = Number(parseFloat((new Date().getTime() / 1000)).toFixed(0)) + Number(expirationDuration) + 100
-
-        await time.setNextBlockTimestamp(nextTimestamp)
-
-        await expect(loanContract.cancelLoan(0)).to.revertedWith("already expired")
+    it("should revert: invalid loan encoding", async function () {
+        const invalidEncodedLoan = invalidEncoding(loan)
+        await expect(loanContract.requestLoan(invalidEncodedLoan)).to.revertedWithoutReason()
     });
 });
+
+function invalidEncoding(loan){
+    const abiEncoder = new ethers.AbiCoder()
+    return abiEncoder.encode(
+        [
+            "address", "address", "address", "address", 
+            "uint256", "uint256", "uint256", 
+            "uint256", "uint256", "uint256",
+            "uint8",
+        ],
+        [
+            loan.borrower, loan.lender, loan.asset, loan.collateral,
+            loan.assetAmount, loan.repaymentAmount, loan.collateralAmount,
+            0, 0, loan.duration,
+            loan.status,
+        ]
+    );
+}

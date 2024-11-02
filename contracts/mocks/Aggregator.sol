@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: MIT
-
 pragma solidity ^0.8.0;
 
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
@@ -7,13 +6,19 @@ import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 contract Aggregator is Ownable {
     constructor() Ownable(msg.sender) {}
 
-    uint256 public answer;
+    int256 private _answer;
+    bool private _revert;
 
-    function setAnswer(uint256 _answer) external onlyOwner() {
-        answer = _answer;
+    function setAnswer(int256 answer) external {
+        _answer = answer;
     }
 
-    function latestAnswer() external view returns (uint256) {
-        return answer;
+    function setRevert(bool shouldRevert) external {
+        _revert = shouldRevert;
+    }
+
+    function latestAnswer() external view returns (int256) {
+        require(!_revert, "Oracle: forced revert");
+        return _answer;
     }
 }

@@ -157,7 +157,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         require(_loan.status == Status.Pending, "invalid status");
         require(_loan.createdTimestamp + REQUEST_EXPIRATION_DURATION > block.timestamp, "already expired");
         if (_loan.liquidation.isLiquidatable){
-            require(!_isLoanLiquidatable(loanId), "instantly liqudatable"); //make sure it can't be instantly liquidated
+            require(!_isLoanLiquidatable(loanId), "instantly liquidatable"); //make sure it can't be instantly liquidated
         }
 
         loans[loanId].lender = msg.sender;
@@ -196,6 +196,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
 
     /// @notice function used to liquidate a loan
     /// @dev loan can be liquiated either if it's overdue, or if it's insolvent (only for liquidatable loans)
+    /// @dev doesn't revert if the loan is not liquidatable
     function liquidateLoan(uint256 loanId) external nonReentrant {
         Loan memory _loan = loans[loanId];
 
@@ -237,8 +238,8 @@ contract LendingP2P is ReentrancyGuard, Ownable {
             uint256 assetPrice = uint256(AggregatorInterface(_loan.liquidation.assetOracle).latestAnswer());
             uint256 collateralPrice = uint256(AggregatorInterface(_loan.liquidation.collateralOracle).latestAnswer());
 
-            require(assetPrice > 0, "invalid oracle asset price");
-            require(collateralPrice > 0, "invalid oracle collateral price");
+            require(assetPrice > 0, "invalid oracle price");
+            require(collateralPrice > 0, "invalid oracle price");
 
             uint8 assetDecimals = IERC20Metadata(_loan.asset).decimals();
             uint8 collateralDecimals = IERC20Metadata(_loan.collateral).decimals();
@@ -268,7 +269,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
     /// @notice used to change loan request expiration
     /// @param _newExpirationDuration loan expiration in seconds
     function setRequestExpirationDuration(uint256 _newExpirationDuration) external onlyOwner() {
-        require(_newExpirationDuration > 1 days, "_newExpirationDuration < 1 day");
+        require(_newExpirationDuration > 1 days, "newExpirationDuration < 1 day");
         emit ExpirationDurationUpdated(REQUEST_EXPIRATION_DURATION, _newExpirationDuration);
         REQUEST_EXPIRATION_DURATION = _newExpirationDuration;
     }
@@ -285,8 +286,8 @@ contract LendingP2P is ReentrancyGuard, Ownable {
     /// @param _newLiquidatorBonus new bonus paid to the liquidator, in basis points
     /// @param _newProtocolLiquidationFee new fee paid to the protocol, in basis points
     function setLiquidationConfig(uint256 _newLiquidatorBonus, uint256 _newProtocolLiquidationFee) external onlyOwner() {
-        require(_newLiquidatorBonus < 1000, "_newLiquidatorBonus > 1000 bps");
-        require(_newProtocolLiquidationFee < 500, "_newProtocolLiquidationFee > 500 bps");
+        require(_newLiquidatorBonus < 1000, "liquidatorBonus > 1000 bps");
+        require(_newProtocolLiquidationFee < 500, "protocolLiquidationFee > 500 bps");
 
         emit LiquidatorBonusUpdated(LIQUIDATOR_BONUS_BPS, _newLiquidatorBonus);
         emit ProtocolLiquidationFeeUpdated(PROTOCOL_LIQUIDATION_FEE, _newProtocolLiquidationFee);

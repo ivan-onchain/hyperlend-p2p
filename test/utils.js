@@ -12,8 +12,8 @@ function encodeLoan(loan){
             loan.borrower, loan.lender, loan.asset, loan.collateral,
             loan.assetAmount, loan.repaymentAmount, loan.collateralAmount,
             0, 0, loan.duration,
-            loan.status
-            [loan.liq.isLiquidatable, loan.liq.liquidationThreshold, loan.liq.assetOracle, loan.liq.collateralOracle]
+            loan.status,
+            [loan.liquidation.isLiquidatable, loan.liquidation.liquidationThreshold, loan.liquidation.assetOracle, loan.liquidation.collateralOracle]
         ]
     );
 }
