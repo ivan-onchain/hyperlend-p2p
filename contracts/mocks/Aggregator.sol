@@ -9,6 +9,8 @@ contract Aggregator is Ownable {
     int256 private _answer;
     bool private _revert;
 
+    uint8 public decimals = 8;
+
     function setAnswer(int256 answer) external {
         _answer = answer;
     }

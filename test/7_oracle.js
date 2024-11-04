@@ -30,6 +30,9 @@ describe("Oracle", function () {
             collateralAmount,
             liquidationThreshold = 8000 // 80% by default
         ) {
+            await assetToken.connect(owner).mint(lender.address, assetAmount)
+            await collateralToken.connect(owner).mint(borrower.address, collateralAmount)
+
             const loan = {
                 borrower: borrower.address,
                 lender: ethers.ZeroAddress,
@@ -103,7 +106,11 @@ describe("Oracle", function () {
     });
 
     it("should handle price updates correctly", async function () {
-        const { lending, createLoanRequest, assetOracle, collateralOracle } = await loadFixture(deployContractFixture);
+        const { 
+            lending, assetToken, collateralToken, 
+            createLoanRequest, collateralOracle,
+            borrower, lender
+         } = await loadFixture(deployContractFixture);
 
         const assetAmount = ethers.parseUnits("1000", 6);
         const collateralAmount = ethers.parseUnits("1", 18);
@@ -114,13 +121,17 @@ describe("Oracle", function () {
             collateralAmount
         );
 
+        await assetToken.connect(lender).approve(lending.target, "99999999999999999999999999999999");
+        await collateralToken.connect(borrower).approve(lending.target, "99999999999999999999999999999999");
+        await lending.connect(lender).fillRequest(0)
+
         expect(await lending._isLoanLiquidatable(0)).to.be.false;
-        await collateralOracle.setAnswer(ethers.parseUnits("1000", 8));
+        await collateralOracle.setAnswer(ethers.parseUnits("1", 8));
         expect(await lending._isLoanLiquidatable(0)).to.be.true;
     });
 
     it("should revert: on oracle reversion", async function () {
-        const { lending, createLoanRequest, assetOracle } = await loadFixture(deployContractFixture);
+        const { lending, createLoanRequest, assetOracle, assetToken, collateralToken, lender, borrower } = await loadFixture(deployContractFixture);
 
         const assetAmount = ethers.parseUnits("1000", 6);
         const collateralAmount = ethers.parseUnits("1", 18);
@@ -130,6 +141,10 @@ describe("Oracle", function () {
             assetAmount + ethers.parseUnits("100", 6),
             collateralAmount
         );
+
+        await assetToken.connect(lender).approve(lending.target, "99999999999999999999999999999999");
+        await collateralToken.connect(borrower).approve(lending.target, "99999999999999999999999999999999");
+        await lending.connect(lender).fillRequest(0)
 
         await assetOracle.setRevert(true);
 
@@ -137,7 +152,7 @@ describe("Oracle", function () {
     });
 
     it("should revert: on zero prices", async function () {
-        const { lending, createLoanRequest, assetOracle } = await loadFixture(deployContractFixture);
+        const { lending, createLoanRequest, assetOracle, assetToken, collateralToken, lender, borrower } = await loadFixture(deployContractFixture);
 
         const assetAmount = ethers.parseUnits("1000", 6);
         const collateralAmount = ethers.parseUnits("1", 18);
@@ -147,6 +162,10 @@ describe("Oracle", function () {
             assetAmount + ethers.parseUnits("100", 6),
             collateralAmount
         );
+
+        await assetToken.connect(lender).approve(lending.target, "99999999999999999999999999999999");
+        await collateralToken.connect(borrower).approve(lending.target, "99999999999999999999999999999999");
+        await lending.connect(lender).fillRequest(0)
 
         await assetOracle.setAnswer(0);
 

@@ -234,7 +234,7 @@ describe("Liquidate", function () {
         expect(storedLoanAfterLiquidate.status).to.equal(4);
     });
 
-    it("should liquidate a not-liquidatable loan, status shouldn't change", async function () {
+    it("should not liquidate a not-liquidatable loan, status shouldn't change", async function () {
         loan.assetAmount = "1000"
         const encodedLoan = encodeLoan(loan)
         await loanContract.connect(borrower).requestLoan(encodedLoan);
@@ -251,7 +251,7 @@ describe("Liquidate", function () {
         expect((await loanContract.loans(0)).status).to.equal(statusBefore);
     });
 
-    it("should liquidate a not-defaulted loan, status shouldn't change", async function () {
+    it("should not liquidate a not-defaulted loan, status shouldn't change", async function () {
         loan.liquidation.isLiquidatable = false
         const encodedLoan = encodeLoan(loan)
         await loanContract.connect(borrower).requestLoan(encodedLoan);
@@ -268,11 +268,13 @@ describe("Liquidate", function () {
         expect((await loanContract.loans(0)).status).to.equal(statusBefore);
     });
 
-    it("should revert: loan is not active", async function () {
+    it("should not liquidate a not-defaulted loan, status shouldn't change", async function () {
         const encodedLoan = encodeLoan(loan)
         await loanContract.connect(borrower).requestLoan(encodedLoan);
 
-        await expect(loanContract.connect(liquidator).liquidateLoan(0)).to.revertedWith("invalid status");
+        let statusBefore = (await loanContract.loans(0)).status
+        loanContract.connect(liquidator).liquidateLoan(0)
+        expect((await loanContract.loans(0)).status).to.equal(statusBefore);
     });
 
     it("should revert: invalid collateral price", async function () {

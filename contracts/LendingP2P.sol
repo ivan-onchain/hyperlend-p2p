@@ -131,6 +131,12 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         require(loan.asset != loan.collateral, "asset == collateral");
         require(loan.liquidation.liquidationThreshold <= 10000, "liq threshold > max bps");
 
+        if (loan.liquidation.isLiquidatable){
+            uint8 assetOracleDecimals = AggregatorInterface(loan.liquidation.assetOracle).decimals();
+            uint8 collateralOracleDecimals = AggregatorInterface(loan.liquidation.collateralOracle).decimals();
+            require(assetOracleDecimals == collateralOracleDecimals, "oracle decimals missmatch");
+        }
+
         loan.createdTimestamp = uint64(block.timestamp);
         loan.startTimestamp = 0;
         loan.status = Status.Pending;
@@ -158,13 +164,14 @@ contract LendingP2P is ReentrancyGuard, Ownable {
 
         require(_loan.status == Status.Pending, "invalid status");
         require(_loan.createdTimestamp + REQUEST_EXPIRATION_DURATION > block.timestamp, "already expired");
-        if (_loan.liquidation.isLiquidatable){
-            require(!_isLoanLiquidatable(loanId), "instantly liquidatable"); //make sure it can't be instantly liquidated
-        }
 
         loans[loanId].lender = msg.sender;
         loans[loanId].startTimestamp = uint64(block.timestamp);
         loans[loanId].status = Status.Active;
+
+        if (_loan.liquidation.isLiquidatable){
+            require(!_isLoanLiquidatable(loanId), "instantly liquidatable"); //make sure it can't be instantly liquidated
+        }
 
         IERC20(_loan.collateral).safeTransferFrom(_loan.borrower, address(this), _loan.collateralAmount);
         IERC20(_loan.asset).safeTransferFrom(msg.sender, _loan.borrower, _loan.assetAmount);
@@ -200,15 +207,8 @@ contract LendingP2P is ReentrancyGuard, Ownable {
     /// @dev loan can be liquiated either if it's overdue, or if it's insolvent (only for liquidatable loans)
     /// @dev doesn't revert if the loan is not liquidatable
     function liquidateLoan(uint256 loanId) external nonReentrant returns (bool) {
-        Loan memory _loan = loans[loanId];
-
-        require(_loan.status == Status.Active, "invalid status");
-
         if (_isLoanLiquidatable(loanId)){
-            _liquidate(loanId); //liquidate by price
-            return true;
-        } else if (block.timestamp > _loan.startTimestamp + _loan.duration) {
-            _liquidate(loanId); //liquidate by time
+            _liquidate(loanId);
             return true;
         }
 
@@ -240,6 +240,16 @@ contract LendingP2P is ReentrancyGuard, Ownable {
     function _isLoanLiquidatable(uint256 loanId) public view returns (bool) {
         Loan memory _loan = loans[loanId];
 
+        //loan is not active
+        if (_loan.status != Status.Active){
+            return false;
+        }
+
+        //defaulted loan
+        if (block.timestamp > _loan.startTimestamp + _loan.duration){
+            return true;
+        }
+
         if (_loan.liquidation.isLiquidatable){
             uint256 assetPrice = uint256(AggregatorInterface(_loan.liquidation.assetOracle).latestAnswer());
             uint256 collateralPrice = uint256(AggregatorInterface(_loan.liquidation.collateralOracle).latestAnswer());
@@ -258,7 +268,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
             uint256 collateralValueUsd = PRECISION_FACTOR * _loan.collateralAmount * collateralPrice / (10 ** collateralDecimals);
 
             return (loanValueUsd > (collateralValueUsd * _loan.liquidation.liquidationThreshold / 10000));
-        }
+        } 
 
         return false;
     }
