@@ -14,11 +14,15 @@ describe("Request", function () {
 
         loanContract = await LoanContract.deploy();
 
+        const MockToken = await ethers.getContractFactory("MockERC20Metadata"); 
+        mockAsset = await MockToken.deploy("Asset", "ASSET", 8)
+        mockCollateral = await MockToken.deploy("Collateral", "COLLAT", 18)
+
         loan = {
             borrower: owner.address,
             lender: "0x0000000000000000000000000000000000000000",
-            asset: "0x0000000000000000000000000000000000000001",
-            collateral: "0x0000000000000000000000000000000000000002",
+            asset: mockAsset.target,
+            collateral: mockCollateral.target,
     
             assetAmount: ethers.parseEther("10"),
             repaymentAmount: ethers.parseEther("12"),
@@ -98,6 +102,19 @@ describe("Request", function () {
     it("should revert: invalid loan encoding", async function () {
         const invalidEncodedLoan = invalidEncoding(loan)
         await expect(loanContract.requestLoan(invalidEncodedLoan)).to.revertedWithoutReason()
+    });
+
+    it("should revert: invalid token decimals", async function () {
+        const invalidToken = await (await ethers.getContractFactory("MockNonStandardToken")).deploy()
+        loan.asset = invalidToken.target;
+        const encodedLoan = encodeLoan(loan)
+        await expect(loanContract.requestLoan(encodedLoan)).to.revertedWithoutReason()
+    });
+
+    it("should revert: invalid token contract", async function () {
+        loan.asset = "0x0000000000000000000000000000000000000024";
+        const encodedLoan = encodeLoan(loan)
+        await expect(loanContract.requestLoan(encodedLoan)).to.revertedWithoutReason()
     });
 });
 

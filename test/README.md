@@ -20,6 +20,8 @@
    - [x] Revert when asset === collateral
    - [x] Revert when liquidationThreshold > 10000
    - [x] Revert on invalid loan struct encoding
+   - [x] Revert on invalid token decimals
+   - [x] Revert on invalid token address (not contract)
 
 ## Loan Fill Tests
 1. Successful loan fill
@@ -95,6 +97,7 @@
 2. Failed oracle scenarios
    - [x] Revert on oracle reversion
    - [x] Revert on zero prices
+   - [x] Revert on different asset and oracle decimals
 
 ## Admin Function Tests
 1. setFeeCollector

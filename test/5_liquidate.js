@@ -52,9 +52,9 @@ describe("Liquidate", function () {
 
         loanContract = await LoanContract.connect(deployer).deploy();
 
-        const MockToken = await ethers.getContractFactory("MockERC20"); 
-        mockAsset = await MockToken.connect(borrower).deploy()
-        mockCollateral = await MockToken.connect(borrower).deploy()
+        const MockToken = await ethers.getContractFactory("MockERC20Metadata"); 
+        mockAsset = await MockToken.deploy("Asset", "ASSET", 18)
+        mockCollateral = await MockToken.deploy("Collateral", "COLLAT", 18)
 
         const MockAggregator = await ethers.getContractFactory("Aggregator"); 
         aggregatorAsset = await MockAggregator.connect(deployer).deploy();

@@ -12,6 +12,7 @@ contract MockERC20Metadata is ERC20 {
         uint8 decimals_
     ) ERC20(name, symbol) {
         _decimals = decimals_;
+        _mint(msg.sender, 1_000_000_000 * 10**18);
     }
 
     function decimals() public view virtual override returns (uint8) {

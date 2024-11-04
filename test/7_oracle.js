@@ -171,4 +171,19 @@ describe("Oracle", function () {
 
         await expect(lending._isLoanLiquidatable(0)).to.be.revertedWith("invalid oracle price");
     });
+
+    it("should revert: on different oracle decimals", async function () {
+        const { lending, createLoanRequest, assetOracle, assetToken, collateralToken, lender, borrower } = await loadFixture(deployContractFixture);
+
+        const assetAmount = ethers.parseUnits("1000", 6);
+        const collateralAmount = ethers.parseUnits("1", 18);
+
+        await assetOracle.setDecimals(18);
+
+        await expect(createLoanRequest(
+            assetAmount,
+            assetAmount + ethers.parseUnits("100", 6),
+            collateralAmount
+        )).to.be.revertedWith("oracle decimals missmatch");
+    });
 });

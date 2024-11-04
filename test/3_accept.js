@@ -40,9 +40,9 @@ describe("Accept", function () {
 
         loanContract = await LoanContract.deploy();
 
-        const MockToken = await ethers.getContractFactory("MockERC20"); 
-        mockAsset = await MockToken.deploy()
-        mockCollateral = await MockToken.deploy()
+        const MockToken = await ethers.getContractFactory("MockERC20Metadata"); 
+        mockAsset = await MockToken.deploy("Asset", "ASSET", 8)
+        mockCollateral = await MockToken.deploy("Collateral", "COLLAT", 8)
 
         loan = {
             borrower: borrower.address,

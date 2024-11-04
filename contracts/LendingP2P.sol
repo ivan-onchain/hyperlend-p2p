@@ -135,6 +135,10 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         require(loan.asset != loan.collateral, "asset == collateral");
         require(loan.liquidation.liquidationThreshold <= 10000, "liq threshold > max bps");
 
+        //since users can use any address (even non-standard contracts), verify that decimals function exists
+        require(IERC20Metadata(loan.asset).decimals() >= 0, "invalid decimals");
+        require(IERC20Metadata(loan.collateral).decimals() >= 0, "invalid decimals");
+
         if (loan.liquidation.isLiquidatable){
             uint8 assetOracleDecimals = AggregatorInterface(loan.liquidation.assetOracle).decimals();
             uint8 collateralOracleDecimals = AggregatorInterface(loan.liquidation.collateralOracle).decimals();

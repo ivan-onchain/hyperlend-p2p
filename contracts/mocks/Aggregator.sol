@@ -16,6 +16,10 @@ contract Aggregator is Ownable {
         _answer = answer;
     }
 
+    function setDecimals(uint8 newDecimals) external {
+        decimals = newDecimals;
+    }
+
     function setRevert(bool shouldRevert) external {
         _revert = shouldRevert;
     }

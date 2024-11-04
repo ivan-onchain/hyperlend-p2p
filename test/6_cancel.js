@@ -19,11 +19,15 @@ describe("Cancel", function () {
 
         loanContract = await LoanContract.deploy();
 
+        const MockToken = await ethers.getContractFactory("MockERC20Metadata"); 
+        mockAsset = await MockToken.deploy("Asset", "ASSET", 18)
+        mockCollateral = await MockToken.deploy("Collateral", "COLLAT", 18)
+
         loan = {
             borrower: owner.address,
             lender: "0x0000000000000000000000000000000000000000",
-            asset: "0x0000000000000000000000000000000000000001",
-            collateral: "0x0000000000000000000000000000000000000002",
+            asset: mockAsset.target,
+            collateral: mockCollateral.target,
     
             assetAmount: ethers.parseEther("10"),
             repaymentAmount: ethers.parseEther("12"),
