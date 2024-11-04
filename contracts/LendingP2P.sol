@@ -87,6 +87,8 @@ contract LendingP2P is ReentrancyGuard, Ownable {
     /*                     Protocol config                      */
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
+    /// @notice maximum acceptable age of the oracle price in seconds, afterwards liquidations will revert
+    uint256 public MAX_ORACLE_PRICE_AGE = 1 hours;
     /// @notice precision factor, used when calculating asset values, to avoid precision loss
     uint256 public PRECISION_FACTOR = 1e8;
     /// @notice maximum duration that the loan request can be active
@@ -251,11 +253,15 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         }
 
         if (_loan.liquidation.isLiquidatable){
-            uint256 assetPrice = uint256(AggregatorInterface(_loan.liquidation.assetOracle).latestAnswer());
-            uint256 collateralPrice = uint256(AggregatorInterface(_loan.liquidation.collateralOracle).latestAnswer());
+            //users are expected to verify that assetOracle and collateralOracle are not malicious contracts before filling loan request
+            (, int256 assetPrice, , uint256 assetPriceUpdatedAt,) = AggregatorInterface(_loan.liquidation.assetOracle).latestRoundData();
+            (, int256 collateralPrice, , uint256 collateralPriceUpdatedAt,) = AggregatorInterface(_loan.liquidation.collateralOracle).latestRoundData();
 
             require(assetPrice > 0, "invalid oracle price");
             require(collateralPrice > 0, "invalid oracle price");
+
+            require(MAX_ORACLE_PRICE_AGE > block.timestamp - assetPriceUpdatedAt, "stale asset oracle");
+            require(MAX_ORACLE_PRICE_AGE > block.timestamp - collateralPriceUpdatedAt, "stale collateral oracle");
 
             //users are expected to use only standard ERC20Metadata tokens that include decimals()
             uint8 assetDecimals = IERC20Metadata(_loan.asset).decimals();
@@ -264,8 +270,8 @@ contract LendingP2P is ReentrancyGuard, Ownable {
             //uint256.max is 1.15e77 and chainlink price is expected to be under 1e12, 
             //so overflow would only happen if amount > 1e53, with 0 decimals
             //this is an acceptable risk, and users are expected to not use amounts that high
-            uint256 loanValueUsd = PRECISION_FACTOR * _loan.assetAmount * assetPrice / (10 ** assetDecimals);
-            uint256 collateralValueUsd = PRECISION_FACTOR * _loan.collateralAmount * collateralPrice / (10 ** collateralDecimals);
+            uint256 loanValueUsd = PRECISION_FACTOR * _loan.assetAmount * uint256(assetPrice) / (10 ** assetDecimals);
+            uint256 collateralValueUsd = PRECISION_FACTOR * _loan.collateralAmount * uint256(collateralPrice) / (10 ** collateralDecimals);
 
             return (loanValueUsd > (collateralValueUsd * _loan.liquidation.liquidationThreshold / 10000));
         } 

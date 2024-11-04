@@ -291,4 +291,34 @@ describe("Liquidate", function () {
 
         await expect(loanContract.connect(liquidator).liquidateLoan(0)).to.revertedWith("invalid oracle price");
     });
+
+    it("should revert: stale collateral price", async function () {
+        loan.liquidation.isLiquidatable = true
+        const encodedLoan = encodeLoan(loan)
+        await loanContract.connect(borrower).requestLoan(encodedLoan);
+
+        await mockAsset.connect(borrower).transfer(lender.address, loan.assetAmount)
+        await mockCollateral.connect(borrower).approve(loanContract.target, loan.collateralAmount)
+        await mockAsset.connect(lender).approve(loanContract.target, loan.assetAmount)
+        await loanContract.connect(lender).fillRequest(0);
+
+        await aggregatorCollateral.connect(deployer).setPriceAge(60 * 60 * 2);
+
+        await expect(loanContract.connect(liquidator).liquidateLoan(0)).to.revertedWith("stale collateral oracle");
+    });
+
+    it("should revert: stale asset price", async function () {
+        loan.liquidation.isLiquidatable = true
+        const encodedLoan = encodeLoan(loan)
+        await loanContract.connect(borrower).requestLoan(encodedLoan);
+
+        await mockAsset.connect(borrower).transfer(lender.address, loan.assetAmount)
+        await mockCollateral.connect(borrower).approve(loanContract.target, loan.collateralAmount)
+        await mockAsset.connect(lender).approve(loanContract.target, loan.assetAmount)
+        await loanContract.connect(lender).fillRequest(0);
+
+        await aggregatorAsset.connect(deployer).setPriceAge(60 * 60 * 2);
+
+        await expect(loanContract.connect(liquidator).liquidateLoan(0)).to.revertedWith("stale asset oracle");
+    });
 });

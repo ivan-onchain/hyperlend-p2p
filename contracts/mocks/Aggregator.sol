@@ -8,6 +8,7 @@ contract Aggregator is Ownable {
 
     int256 private _answer;
     bool private _revert;
+    uint256 private _priceAge;
 
     uint8 public decimals = 8;
 
@@ -19,8 +20,27 @@ contract Aggregator is Ownable {
         _revert = shouldRevert;
     }
 
+    function setPriceAge(uint256 priceAge) external {
+        _priceAge = priceAge;
+    }
+
     function latestAnswer() external view returns (int256) {
         require(!_revert, "Oracle: forced revert");
         return _answer;
+    }
+
+    function latestRoundData() external view returns (
+        uint80 roundId, 
+        int256 answer, 
+        uint256 startedAt, 
+        uint256 updatedAt, 
+        uint80 answeredInRound
+    ) {
+        require(!_revert, "Oracle: forced revert");
+        roundId = 0;
+        answer = _answer;
+        startedAt = _priceAge == 0 ? block.timestamp : block.timestamp - _priceAge;
+        updatedAt = _priceAge == 0 ? block.timestamp : block.timestamp - _priceAge;
+        answeredInRound = 0;
     }
 }
