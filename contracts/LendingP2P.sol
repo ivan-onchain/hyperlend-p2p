@@ -34,7 +34,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         bool isLiquidatable;          // can the loan be liquidated before it's defaulted
         uint16 liquidationThreshold;  // threshold where loan can be liquidated in bps, e.g. 8000 = liquidated when loan value > 80% of the collateral value
         address assetOracle;          // chainlink oracle for the borrowed asset
-        address collateralOracle;     // chainlink oracle for the collateral asset, must be in same currency as assetOracle
+        address collateralOracle;     // chainlink oracle for the collateral asset, must be in the same currency as assetOracle
     }
 
     /// @notice details about the individual loan
@@ -44,12 +44,12 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         address asset;            // address of the asset being borrowed
         address collateral;       // address of the asset used as a collateral
 
-        uint256 assetAmount;      // amount of the asset being paid to borrower by lender
+        uint256 assetAmount;      // amount of the asset being paid to the borrower by the lender
         uint256 repaymentAmount;  // amount of the asset being repaid by the lender
         uint256 collateralAmount; // amount of the collateral being pledged by the borrower
 
-        uint64 createdTimestamp;  // timestamp when loan request was created
-        uint64 startTimestamp;    // timestamp when loan was accepted
+        uint64 createdTimestamp;  // timestamp when the loan request was created
+        uint64 startTimestamp;    // timestamp when the loan was accepted
         uint64 duration;          // duration of the loan in seconds
 
         Status status;            // current status of the loan
@@ -147,7 +147,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         emit LoanRequested(loanLength - 1, msg.sender);
     }
 
-    /// @notice function used to cancel a unfilled loan
+    /// @notice function used to cancel an unfilled loan
     function cancelLoan(uint256 loanId) external nonReentrant {
         require(loans[loanId].status == Status.Pending, "invalid status");
         require(loans[loanId].createdTimestamp + REQUEST_EXPIRATION_DURATION > block.timestamp, "already expired");
@@ -192,8 +192,8 @@ contract LendingP2P is ReentrancyGuard, Ownable {
 
         loans[loanId].status = Status.Repaid;
 
-        //since token could be ERC777 and lender could be a contract, there is a possible DoS attack vector during repayment/liquidtion
-        //this is acceptable, since borrowers are expected to be aware of the risk when using non-standard tokens + lender would also lose their assets
+        //since the token could be ERC777 and the lender could be a contract, there is a possible DoS attack vector during repayment/liquidation
+        //this is acceptable, since borrowers are expected to be aware of the risk when using non-standard tokens
         IERC20(_loan.asset).safeTransferFrom(_loan.borrower, _loan.lender, amountToLender); //return asset
         IERC20(_loan.collateral).safeTransfer(_loan.borrower, _loan.collateralAmount); //return collateral
 
@@ -204,8 +204,8 @@ contract LendingP2P is ReentrancyGuard, Ownable {
     }   
 
     /// @notice function used to liquidate a loan
-    /// @dev loan can be liquiated either if it's overdue, or if it's insolvent (only for liquidatable loans)
-    /// @dev doesn't revert if the loan is not liquidatable
+    /// @dev loan can be liquidated either if it's overdue, or if it's insolvent (only for liquidatable loans)
+    /// @dev doesn't revert if the loan is not liquidatable, only if the price from the oracle is invalid
     function liquidateLoan(uint256 loanId) external nonReentrant returns (bool) {
         if (_isLoanLiquidatable(loanId)){
             _liquidate(loanId);
@@ -263,7 +263,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
 
             //uint256.max is 1.15e77 and chainlink price is expected to be under 1e12, 
             //so overflow would only happen if amount > 1e53, with 0 decimals
-            //this is acceptable risk, and users are expected to not use amounts that high
+            //this is an acceptable risk, and users are expected to not use amounts that high
             uint256 loanValueUsd = PRECISION_FACTOR * _loan.assetAmount * assetPrice / (10 ** assetDecimals);
             uint256 collateralValueUsd = PRECISION_FACTOR * _loan.collateralAmount * collateralPrice / (10 ** collateralDecimals);
 
@@ -279,7 +279,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
 
     /// @notice used to change fee collector
     /// @param _newFeeCollector address that will receive the fees
-    /// @dev since some tokens don't allow transfers to addres(0), it can't be set to it
+    /// @dev since some tokens don't allow transfers to address(0), it can't be set to it
     function setFeeCollector(address _newFeeCollector) external onlyOwner() {
         require(_newFeeCollector != address(0), "feeCollector == address(0)");
         emit FeeCollectorUpdated(feeCollector, _newFeeCollector);
@@ -302,7 +302,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         PROTOCOL_FEE = _newProtocolFee;
     }
 
-    /// @notice used to chnage protocol liquidation config
+    /// @notice used to change protocol liquidation config
     /// @param _newLiquidatorBonus new bonus paid to the liquidator, in basis points
     /// @param _newProtocolLiquidationFee new fee paid to the protocol, in basis points
     function setLiquidationConfig(uint256 _newLiquidatorBonus, uint256 _newProtocolLiquidationFee) external onlyOwner() {
