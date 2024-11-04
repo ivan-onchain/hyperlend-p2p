@@ -99,6 +99,18 @@ describe("AdminFunctions", function () {
         expect(await p2p.PROTOCOL_LIQUIDATION_FEE()).to.equal(10);
     });
 
+    it("should update max allowed oracle price age", async function () {
+        const { p2p, owner, otherAccount } = await loadFixture(depoyContracts);
+
+        expect(await p2p.MAX_ORACLE_PRICE_AGE()).to.equal(60 * 60);
+
+        await expect(p2p.setMaximumOraclePriceAge(60 * 60 * 2))
+            .to.emit(p2p, "MaxOraclePriceAgeUpdated")
+            .withArgs(60 * 60, 60 * 60 * 2)
+
+        expect(await p2p.MAX_ORACLE_PRICE_AGE()).to.equal(60 * 60 * 2);
+    });
+
     it("should revert: liquidator bonus > 1000 bps", async function () {
         const { p2p, owner, otherAccount } = await loadFixture(depoyContracts);
         await expect(p2p.setLiquidationConfig(1001, 10)).to.revertedWith("liquidatorBonus > 1000 bps")

@@ -34,7 +34,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         bool isLiquidatable;          // can the loan be liquidated before it's defaulted
         uint16 liquidationThreshold;  // threshold where loan can be liquidated in bps, e.g. 8000 = liquidated when loan value > 80% of the collateral value
         address assetOracle;          // chainlink oracle for the borrowed asset
-        address collateralOracle;     // chainlink oracle for the collateral asset, must be in the same currency as assetOracle
+        address collateralOracle;     // chainlink oracle for the collateral asset, must be in the same quote currency as assetOracle
     }
 
     /// @notice details about the individual loan
@@ -82,6 +82,8 @@ contract LendingP2P is ReentrancyGuard, Ownable {
     event LiquidatorBonusUpdated(uint256 oldLiquidatorBonus, uint256 newLiquidatorBonus);
     /// @notice emitted when protocol liquidation fee changes
     event ProtocolLiquidationFeeUpdated(uint256 oldProtocolLiquidationFee, uint256 newProtocolLiquidationFee);
+    /// @notice emitted when max allowed oracle price age changes
+    event MaxOraclePriceAgeUpdated(uint256 oldMaxOraclePriceAge, uint256 newMaxOraclePriceAge);
 
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
     /*                     Protocol config                      */
@@ -298,6 +300,13 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         require(_newExpirationDuration > 1 days, "newExpirationDuration < 1 day");
         emit ExpirationDurationUpdated(REQUEST_EXPIRATION_DURATION, _newExpirationDuration);
         REQUEST_EXPIRATION_DURATION = _newExpirationDuration;
+    }
+
+    /// @notice used to change maximum allowed oracle price age
+    /// @param _newMaxPriceAge maximum allowed oracle price age in seconds
+    function setMaximumOraclePriceAge(uint256 _newMaxPriceAge) external onlyOwner() {
+        emit MaxOraclePriceAgeUpdated(MAX_ORACLE_PRICE_AGE, _newMaxPriceAge);
+        MAX_ORACLE_PRICE_AGE = _newMaxPriceAge;
     }
 
     /// @notice used to change the protocol fee percentage
