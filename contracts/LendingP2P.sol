@@ -135,14 +135,14 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         require(loan.asset != loan.collateral, "asset == collateral");
         require(loan.liquidation.liquidationThreshold <= 10000, "liq threshold > max bps");
 
-        //since users can use any address (even non-standard contracts), verify that decimals function exists
+        //since users can use any address (even non-standard contracts), verify that the decimals function exists
         require(IERC20Metadata(loan.asset).decimals() >= 0, "invalid decimals");
         require(IERC20Metadata(loan.collateral).decimals() >= 0, "invalid decimals");
 
         if (loan.liquidation.isLiquidatable){
             uint8 assetOracleDecimals = AggregatorInterface(loan.liquidation.assetOracle).decimals();
             uint8 collateralOracleDecimals = AggregatorInterface(loan.liquidation.collateralOracle).decimals();
-            require(assetOracleDecimals == collateralOracleDecimals, "oracle decimals missmatch");
+            require(assetOracleDecimals == collateralOracleDecimals, "oracle decimals mismatch");
         }
 
         loan.createdTimestamp = uint64(block.timestamp);
@@ -306,7 +306,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         REQUEST_EXPIRATION_DURATION = _newExpirationDuration;
     }
 
-    /// @notice used to change maximum allowed oracle price age
+    /// @notice used to change the maximum allowed oracle price age
     /// @param _newMaxPriceAge maximum allowed oracle price age in seconds
     function setMaximumOraclePriceAge(uint256 _newMaxPriceAge) external onlyOwner() {
         emit MaxOraclePriceAgeUpdated(MAX_ORACLE_PRICE_AGE, _newMaxPriceAge);

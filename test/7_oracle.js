@@ -184,6 +184,6 @@ describe("Oracle", function () {
             assetAmount,
             assetAmount + ethers.parseUnits("100", 6),
             collateralAmount
-        )).to.be.revertedWith("oracle decimals missmatch");
+        )).to.be.revertedWith("oracle decimals mismatch");
     });
 });
