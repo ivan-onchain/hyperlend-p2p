@@ -8,6 +8,7 @@ import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/I
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import { AggregatorInterface } from './dependencies/AggregatorInterface.sol';
+import {console} from "forge-std/console.sol";
 
 /**
  * @title  LendingP2P
@@ -45,6 +46,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         address collateral;       // address of the asset used as a collateral
 
         uint256 assetAmount;      // amount of the asset being paid to the borrower by the lender
+        //@audit-info comment doesn't reflect the actual logic.
         uint256 repaymentAmount;  // amount of the asset being repaid by the lender
         uint256 collateralAmount; // amount of the collateral being pledged by the borrower
 
@@ -133,10 +135,13 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         require(loan.borrower == msg.sender, "borrower != msg.sender");
         require(loan.repaymentAmount > loan.assetAmount, "amount <= repayment");
         require(loan.asset != loan.collateral, "asset == collateral");
+        // @audit-info: magic number 
         require(loan.liquidation.liquidationThreshold <= 10000, "liq threshold > max bps");
 
         //since users can use any address (even non-standard contracts), verify that the decimals function exists
+        // qr it allows decimals to different than 18? yes and it is supported
         require(IERC20Metadata(loan.asset).decimals() >= 0, "invalid decimals");
+        // qr what happens if decimals mismatch?, nothing wrong, it is supported
         require(IERC20Metadata(loan.collateral).decimals() >= 0, "invalid decimals");
 
         if (loan.liquidation.isLiquidatable){
@@ -158,6 +163,9 @@ contract LendingP2P is ReentrancyGuard, Ownable {
     /// @notice function used to cancel an unfilled loan
     function cancelLoan(uint256 loanId) external nonReentrant {
         require(loans[loanId].status == Status.Pending, "invalid status");
+        // qr REQUEST_EXPIRATION_DURATION is the maximum duration that the loan request can be active. Based on the below logic after 
+        // that time has passed, the loan request can't be canceled.
+        // r , yes it can't be canceled after REQUEST_EXPIRATION_DURATION
         require(loans[loanId].createdTimestamp + REQUEST_EXPIRATION_DURATION > block.timestamp, "already expired");
         require(loans[loanId].borrower == msg.sender, "sender != borrower");
 
@@ -194,7 +202,9 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         Loan memory _loan = loans[loanId];
 
         require(_loan.status == Status.Active, "invalid status");
-
+        // @audit-info: magic number . It should be PROTOCOL_FEE_PRECISION_FACTOR
+        // qr if repaymentAmount is slightly larger than assetAmount protocol fee will be zero and it would be a proble if asset token reverts on zero transfer
+        // r yes but that issue is out of scope for this contest
         uint256 protocolFee = (_loan.repaymentAmount - _loan.assetAmount) * PROTOCOL_FEE / 10000;
         uint256 amountToLender = _loan.repaymentAmount - protocolFee;
 
@@ -244,7 +254,7 @@ contract LendingP2P is ReentrancyGuard, Ownable {
         emit LoanLiquidated(loanId);
         emit ProtocolRevenue(loanId, _loan.collateral, protocolFee);
     }
-
+    // qr it shouldn't be an internal function ? actually I am not sure, maybe it only have a bad naming convention
     function _isLoanLiquidatable(uint256 loanId) public view returns (bool) {
         Loan memory _loan = loans[loanId];
 
@@ -276,9 +286,13 @@ contract LendingP2P is ReentrancyGuard, Ownable {
             //uint256.max is 1.15e77 and chainlink price is expected to be under 1e12, 
             //so overflow would only happen if amount > 1e53, with 0 decimals
             //this is an acceptable risk, and users are expected to not use amounts that high
+            // q 1e8 * 5e18 * 1000e12 / 1e18 = 5000e20
+            // q 1e8 * 1e16 * 1e12 / 1e24 = 1e16
+            // q 1e8 * 1e6 * 1e12 / 1e6 = 1e20    
             uint256 loanValueUsd = PRECISION_FACTOR * _loan.assetAmount * uint256(assetPrice) / (10 ** assetDecimals);
             uint256 collateralValueUsd = PRECISION_FACTOR * _loan.collateralAmount * uint256(collateralPrice) / (10 ** collateralDecimals);
-
+            // @audit-info: magic number , it should be LIQUIDATION_THRESHOLD_PRECISION_FACTOR
+            
             return (loanValueUsd > (collateralValueUsd * _loan.liquidation.liquidationThreshold / 10000));
         } 
 

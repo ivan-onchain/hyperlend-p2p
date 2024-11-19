@@ -1,33 +1,66 @@
-# HyperLend P2P lending
+## Foundry
 
-Isolated loans between 2 users.
+**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
 
-#### Features:
+Foundry consists of:
 
-- users can request a loan:
-    - select:
-        - asset (to be borrowed) token 
-        - collateral token 
-        - amount of the asset to be borrowed, 
-        - amount of the assetto be repaid
-        - the amount of collateral 
-        - loan duration, 
-        - can the loan be liquidated when it becomes insolvent:
-            - asset oracle 
-            - collateral oracle
-            - liquidation threshold
-- users can fill a loan requests
-- users can cancel unfilled requests
-- users can repay loans
-- unfilled requests expire after `REQUEST_EXPIRATION_DURATION` time
-- loans can be liquidated:
-    - if the duration was exceeded and the loan wasn't repaid in time
-    - if the loan is liquidatable, and value of the asset is higher than the value of the collateral * liquidation threshold
-- protocol fee is charged on interest-only (repayment amount - borrowed amount)
-- liquidators & protocol receive a portion of the collateral (set to 1% for the liquidator and 0.2% for protocol) during liquidations
+-   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
+-   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
+-   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
+-   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
 
----
+## Documentation
 
-Tests:
+https://book.getfoundry.sh/
 
-`npx hardhat test`
+## Usage
+
+### Build
+
+```shell
+$ forge build
+```
+
+### Test
+
+```shell
+$ forge test
+```
+
+### Format
+
+```shell
+$ forge fmt
+```
+
+### Gas Snapshots
+
+```shell
+$ forge snapshot
+```
+
+### Anvil
+
+```shell
+$ anvil
+```
+
+### Deploy
+
+```shell
+$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
+```
+
+### Cast
+
+```shell
+$ cast <subcommand>
+```
+
+### Help
+
+```shell
+$ forge --help
+$ anvil --help
+$ cast --help
+```
